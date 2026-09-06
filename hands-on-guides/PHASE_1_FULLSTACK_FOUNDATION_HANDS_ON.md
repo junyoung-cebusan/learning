@@ -1,11 +1,12 @@
 # Phase 1 — Full-Stack Foundation Hands-on Guide
 
-> 既存の1〜12段階の学習順序は変更しない。  
-> 既に進めているIssue Trackerをそのまま使い、必要なTestとFrontend実装を追加する。
+> 実務に近い流れを優先し、最初からPostgreSQL + SQLAlchemy Asyncを使用する。  
+> Memory CRUDは使用しない。  
+> TestはBackend / Frontendの機能実装が一通り完成した後に追加する。
 
 ---
 
-# 0. このPhaseの完成形
+# 0. 完成イメージ
 
 ```text
 Next.js
@@ -32,22 +33,19 @@ Login
 Testing:
 
 ```text
-Frontend Unit     : Vitest
-Frontend Component: React Testing Library
-Frontend E2E      : Playwright
+Backend
+→ pytest / pytest-asyncio / httpx
 
-Backend Unit      : pytest
-Backend Async     : pytest-asyncio
-Backend Integration: httpx
+Frontend
+→ Vitest / React Testing Library
+
+E2E
+→ Playwright
 ```
 
 ---
 
 # Step 1 — FastAPI
-
-## Goal
-
-最小のFastAPI Applicationを起動する。
 
 ## Install
 
@@ -65,29 +63,13 @@ app = FastAPI()
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-    }
+    return {"status": "ok"}
 ```
 
-## Run
+Run:
 
 ```bash
 uv run uvicorn app.main:app --reload
-```
-
-## Check
-
-```bash
-curl http://localhost:8000/health
-```
-
-Expected:
-
-```json
-{
-  "status": "ok"
-}
 ```
 
 ---
@@ -100,7 +82,7 @@ Expected:
 uv add "strawberry-graphql[fastapi]"
 ```
 
-## `src/app/graphql/query.py`
+## Query
 
 ```python
 import strawberry
@@ -113,7 +95,7 @@ class Query:
         return "Hello GraphQL"
 ```
 
-## `src/app/graphql/schema.py`
+## Schema
 
 ```python
 import strawberry
@@ -126,16 +108,10 @@ schema = strawberry.Schema(
 )
 ```
 
-## `src/app/main.py`
+## Router
 
 ```python
-from fastapi import FastAPI
 from strawberry.fastapi import GraphQLRouter
-
-from app.graphql.schema import schema
-
-
-app = FastAPI()
 
 graphql_app = GraphQLRouter(schema)
 
@@ -145,7 +121,7 @@ app.include_router(
 )
 ```
 
-## GraphiQL
+GraphiQL:
 
 ```graphql
 query {
@@ -153,202 +129,11 @@ query {
 }
 ```
 
-Expected:
-
-```json
-{
-  "data": {
-    "hello": "Hello GraphQL"
-  }
-}
-```
-
 ---
 
-# Step 3 — GraphQL Type / Input / Mutation
+# Step 3 — PostgreSQL + SQLAlchemy Async
 
-## `src/app/graphql/schemas/issue.py`
-
-```python
-from datetime import datetime
-
-import strawberry
-
-
-@strawberry.type
-class Issue:
-    id: int
-    title: str
-    description: str | None
-    status: str
-    created_at: datetime
-
-
-@strawberry.input
-class CreateIssueInput:
-    title: str
-    description: str | None = None
-```
-
-## Memory Store
-
-`src/app/services/issue_memory.py`
-
-```python
-from datetime import datetime, timezone
-
-from app.graphql.schemas.issue import (
-    CreateIssueInput,
-    Issue,
-)
-
-
-issues: list[Issue] = []
-
-
-def create_issue(
-    input: CreateIssueInput,
-) -> Issue:
-    issue = Issue(
-        id=len(issues) + 1,
-        title=input.title,
-        description=input.description,
-        status="OPEN",
-        created_at=datetime.now(
-            timezone.utc
-        ),
-    )
-
-    issues.append(issue)
-
-    return issue
-
-
-def get_issues() -> list[Issue]:
-    return issues
-```
-
----
-
-# Step 4 — Memory CRUD
-
-## Query
-
-```python
-import strawberry
-
-from app.graphql.schemas.issue import Issue
-from app.services import issue_memory
-
-
-@strawberry.type
-class Query:
-    @strawberry.field
-    def issues(self) -> list[Issue]:
-        return issue_memory.get_issues()
-```
-
-## Mutation
-
-```python
-import strawberry
-
-from app.graphql.schemas.issue import (
-    CreateIssueInput,
-    Issue,
-)
-from app.services import issue_memory
-
-
-@strawberry.type
-class Mutation:
-    @strawberry.mutation
-    def create_issue(
-        self,
-        input: CreateIssueInput,
-    ) -> Issue:
-        return issue_memory.create_issue(
-            input
-        )
-```
-
-## GraphQL
-
-```graphql
-mutation {
-  createIssue(
-    input: {
-      title: "First issue"
-      description: "Memory CRUD"
-    }
-  ) {
-    id
-    title
-    status
-  }
-}
-```
-
----
-
-# Step 4.1 — Backend Unit Test
-
-## Install
-
-```bash
-uv add --dev pytest pytest-asyncio httpx
-```
-
-## `tests/test_issue_memory.py`
-
-```python
-from app.graphql.schemas.issue import (
-    CreateIssueInput,
-)
-from app.services import issue_memory
-
-
-def setup_function():
-    issue_memory.issues.clear()
-
-
-def test_create_issue():
-    issue = issue_memory.create_issue(
-        CreateIssueInput(
-            title="Test",
-            description="Unit Test",
-        )
-    )
-
-    assert issue.id == 1
-    assert issue.title == "Test"
-    assert issue.status == "OPEN"
-
-
-def test_get_issues():
-    issue_memory.create_issue(
-        CreateIssueInput(
-            title="A",
-        )
-    )
-
-    result = issue_memory.get_issues()
-
-    assert len(result) == 1
-    assert result[0].title == "A"
-```
-
-## Run
-
-```bash
-uv run pytest -q
-```
-
----
-
-# Step 5 — PostgreSQL + SQLAlchemy Async
-
-## Docker PostgreSQL
+## PostgreSQL
 
 `compose.yaml`
 
@@ -413,7 +198,7 @@ SessionLocal = async_sessionmaker(
 )
 ```
 
-## Important
+AsyncSession:
 
 ```python
 session.add(model)            # awaitしない
@@ -427,7 +212,7 @@ await session.rollback()
 
 ---
 
-# Step 5.1 — Issue Model
+# Step 4 — Issue Model
 
 `src/app/models/issue.py`
 
@@ -460,11 +245,9 @@ class IssueModel(Base):
         nullable=False,
     )
 
-    description: Mapped[str | None] = (
-        mapped_column(
-            Text,
-            nullable=True,
-        )
+    description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
     )
 
     status: Mapped[str] = mapped_column(
@@ -473,30 +256,25 @@ class IssueModel(Base):
         default="OPEN",
     )
 
-    created_at: Mapped[datetime] = (
-        mapped_column(
-            DateTime(timezone=True),
-            server_default=func.now(),
-            nullable=False,
-        )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
 ```
 
 ---
 
-# Step 5.2 — Create Tables
+# Step 5 — Create Tables
 
 `src/app/create_tables.py`
 
 ```python
 import asyncio
 
-import app.models  # metadata登録用
+import app.models
 
-from app.database import (
-    Base,
-    engine,
-)
+from app.database import Base, engine
 
 
 async def main():
@@ -517,7 +295,41 @@ uv run python -m app.create_tables
 
 ---
 
-# Step 5.3 — Async CRUD Service
+# Step 6 — GraphQL Issue Type / Input
+
+`src/app/graphql/schemas/issue.py`
+
+```python
+from datetime import datetime
+
+import strawberry
+
+
+@strawberry.type
+class Issue:
+    id: int
+    title: str
+    description: str | None
+    status: str
+    created_at: datetime
+
+
+@strawberry.input
+class CreateIssueInput:
+    title: str
+    description: str | None = None
+
+
+@strawberry.input
+class UpdateIssueInput:
+    title: str | None = None
+    description: str | None = None
+    status: str | None = None
+```
+
+---
+
+# Step 7 — Issue CRUD Service
 
 `src/app/services/issue_service.py`
 
@@ -528,6 +340,7 @@ from app.database import SessionLocal
 from app.graphql.schemas.issue import (
     CreateIssueInput,
     Issue,
+    UpdateIssueInput,
 )
 from app.models.issue import IssueModel
 
@@ -571,42 +384,188 @@ async def get_issues() -> list[Issue]:
             )
         )
 
-        models = result.scalars().all()
-
         return [
             to_issue(model)
-            for model in models
+            for model
+            in result.scalars().all()
         ]
+
+
+async def get_issue(
+    issue_id: int,
+) -> Issue | None:
+    async with SessionLocal() as session:
+        model = await session.get(
+            IssueModel,
+            issue_id,
+        )
+
+        if model is None:
+            return None
+
+        return to_issue(model)
+
+
+async def update_issue(
+    issue_id: int,
+    input: UpdateIssueInput,
+) -> Issue | None:
+    async with SessionLocal() as session:
+        model = await session.get(
+            IssueModel,
+            issue_id,
+        )
+
+        if model is None:
+            return None
+
+        if input.title is not None:
+            model.title = input.title
+
+        if input.description is not None:
+            model.description = input.description
+
+        if input.status is not None:
+            model.status = input.status
+
+        await session.commit()
+        await session.refresh(model)
+
+        return to_issue(model)
+
+
+async def delete_issue(
+    issue_id: int,
+) -> bool:
+    async with SessionLocal() as session:
+        model = await session.get(
+            IssueModel,
+            issue_id,
+        )
+
+        if model is None:
+            return True
+
+        await session.delete(model)
+        await session.commit()
+
+        return True
 ```
 
 ---
 
-# Step 5.4 — Async Resolver
+# Step 8 — Query / Mutation
 
 ```python
-@strawberry.field
-async def issues(
-    self,
-) -> list[Issue]:
-    return await issue_service.get_issues()
+@strawberry.type
+class Query:
+    @strawberry.field
+    async def issues(
+        self,
+    ) -> list[Issue]:
+        return await issue_service.get_issues()
+
+    @strawberry.field
+    async def issue(
+        self,
+        id: int,
+    ) -> Issue | None:
+        return await issue_service.get_issue(id)
 ```
 
 ```python
-@strawberry.mutation
-async def create_issue(
-    self,
-    input: CreateIssueInput,
-) -> Issue:
-    return await issue_service.create_issue(
-        input
-    )
+@strawberry.type
+class Mutation:
+    @strawberry.mutation
+    async def create_issue(
+        self,
+        input: CreateIssueInput,
+    ) -> Issue:
+        return await issue_service.create_issue(
+            input
+        )
+
+    @strawberry.mutation
+    async def update_issue(
+        self,
+        id: int,
+        input: UpdateIssueInput,
+    ) -> Issue | None:
+        return await issue_service.update_issue(
+            id,
+            input,
+        )
+
+    @strawberry.mutation
+    async def delete_issue(
+        self,
+        id: int,
+    ) -> bool:
+        return await issue_service.delete_issue(
+            id
+        )
 ```
 
 ---
 
-# Step 6 — SQL / Index / Transaction Basics
+# Step 9 — GraphiQL CRUD
 
-## SQL確認
+Create:
+
+```graphql
+mutation {
+  createIssue(
+    input: {
+      title: "First issue"
+      description: "PostgreSQL CRUD"
+    }
+  ) {
+    id
+    title
+    status
+  }
+}
+```
+
+Read:
+
+```graphql
+query {
+  issues {
+    id
+    title
+    status
+  }
+}
+```
+
+Update:
+
+```graphql
+mutation {
+  updateIssue(
+    id: 1
+    input: {
+      status: "DONE"
+    }
+  ) {
+    id
+    status
+  }
+}
+```
+
+Delete:
+
+```graphql
+mutation {
+  deleteIssue(id: 1)
+}
+```
+
+---
+
+# Step 10 — SQL / Index / Transaction Basics
 
 ```sql
 SELECT
@@ -618,14 +577,12 @@ FROM issues
 ORDER BY id DESC;
 ```
 
-## Index
+Index:
 
 ```sql
 CREATE INDEX idx_issues_status
 ON issues(status);
 ```
-
-確認:
 
 ```sql
 EXPLAIN ANALYZE
@@ -634,7 +591,7 @@ FROM issues
 WHERE status = 'OPEN';
 ```
 
-## Transaction
+Transaction:
 
 ```python
 async with SessionLocal() as session:
@@ -642,28 +599,15 @@ async with SessionLocal() as session:
         ...
 ```
 
-この段階では「複数のDB更新を1つのUnitとして扱う」意味だけ理解する。  
-Isolation / Lock / DeadlockはPhase 2で深掘りする。
+Isolation / Lock / DeadlockはPhase 2で扱う。
 
 ---
 
-# Step 7 — User Relation + DataLoader
+# Step 11 — User Relation + DataLoader
 
-## User Model
-
-`src/app/models/user.py`
+User Model:
 
 ```python
-from sqlalchemy import String
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column,
-    relationship,
-)
-
-from app.database import Base
-
-
 class UserModel(Base):
     __tablename__ = "users"
 
@@ -682,11 +626,9 @@ class UserModel(Base):
         unique=True,
     )
 
-    password_hash: Mapped[str] = (
-        mapped_column(
-            String(255),
-            nullable=False,
-        )
+    password_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
     )
 
     issues = relationship(
@@ -695,13 +637,9 @@ class UserModel(Base):
     )
 ```
 
-## Issue Relation
+Issue Relation:
 
 ```python
-from sqlalchemy import ForeignKey
-from sqlalchemy.orm import relationship
-
-
 owner_id: Mapped[int] = mapped_column(
     ForeignKey("users.id"),
     nullable=False,
@@ -712,70 +650,9 @@ owner: Mapped["UserModel"] = relationship(
 )
 ```
 
----
-
-# Step 7.1 — Strawberry User Type
+GraphQL Context:
 
 ```python
-import strawberry
-
-
-@strawberry.type
-class User:
-    id: int
-    name: str
-    email: str
-```
-
-Issue:
-
-```python
-@strawberry.type
-class Issue:
-    id: int
-    owner_id: strawberry.Private[int]
-    title: str
-    description: str | None
-    status: str
-    created_at: datetime
-
-    @strawberry.field
-    async def owner(
-        self,
-        info: strawberry.Info,
-    ) -> User:
-        model = await (
-            info.context
-            .user_loader
-            .load(self.owner_id)
-        )
-
-        if model is None:
-            raise ValueError(
-                "Owner not found"
-            )
-
-        return User(
-            id=model.id,
-            name=model.name,
-            email=model.email,
-        )
-```
-
----
-
-# Step 7.2 — GraphQL Context + DataLoader
-
-```python
-from fastapi import Request
-from sqlalchemy import select
-from strawberry.dataloader import DataLoader
-from strawberry.fastapi import BaseContext
-
-from app.database import SessionLocal
-from app.models.user import UserModel
-
-
 class GraphQLContext(BaseContext):
     def __init__(
         self,
@@ -784,10 +661,7 @@ class GraphQLContext(BaseContext):
         super().__init__()
 
         self.request = request
-
-        self.current_user: (
-            UserModel | None
-        ) = None
+        self.current_user: UserModel | None = None
 
         self.user_loader = DataLoader(
             load_fn=self.load_users,
@@ -805,9 +679,7 @@ class GraphQLContext(BaseContext):
                 )
             )
 
-            users = (
-                result.scalars().all()
-            )
+            users = result.scalars().all()
 
         user_map = {
             user.id: user
@@ -818,65 +690,21 @@ class GraphQLContext(BaseContext):
             user_map.get(key)
             for key in keys
         ]
-
-
-async def get_context(
-    request: Request,
-) -> GraphQLContext:
-    return GraphQLContext(
-        request=request
-    )
 ```
 
 ---
 
-# Step 7.3 — DataLoader確認
+# Step 12 — JWT Authentication
 
-GraphQL:
-
-```graphql
-query {
-  issues {
-    id
-    title
-    owner {
-      id
-      name
-    }
-  }
-}
-```
-
-SQL LogでOwner取得QueryがIssue件数分発行されず、Batchされることを確認する。
-
----
-
-# Step 8 — JWT Authentication
-
-## Install
+Install:
 
 ```bash
 uv add pyjwt passlib bcrypt
 ```
 
-## JWT
-
-`src/app/auth/jwt.py`
+Create:
 
 ```python
-from datetime import (
-    datetime,
-    timedelta,
-    timezone,
-)
-
-import jwt
-
-
-JWT_SECRET = "dev-secret"
-JWT_ALGORITHM = "HS256"
-
-
 def create_access_token(
     user_id: int,
 ) -> str:
@@ -897,8 +725,11 @@ def create_access_token(
         JWT_SECRET,
         algorithm=JWT_ALGORITHM,
     )
+```
 
+Decode:
 
+```python
 def decode_access_token(
     token: str,
 ) -> int | None:
@@ -911,9 +742,7 @@ def decode_access_token(
             ],
         )
 
-        return int(
-            payload["sub"]
-        )
+        return int(payload["sub"])
 
     except Exception:
         return None
@@ -921,7 +750,7 @@ def decode_access_token(
 
 ---
 
-# Step 8.1 — Contextへcurrent_userを設定
+# Step 13 — current_user
 
 ```python
 async def get_context(
@@ -944,7 +773,7 @@ async def get_context(
         ).strip()
 
         user_id = decode_access_token(
-            token,
+            token
         )
 
         if user_id is not None:
@@ -959,9 +788,7 @@ async def get_context(
     return context
 ```
 
----
-
-# Step 8.2 — Authenticated createIssue
+Authenticated Mutation:
 
 ```python
 @strawberry.mutation
@@ -985,20 +812,131 @@ async def create_issue(
     )
 ```
 
-重要:
+---
 
-```python
-(value)   # value
-(value,)  # tuple
+# Step 14 — Next.js + Tailwind
+
+```bash
+npx create-next-app@latest frontend \
+  --typescript \
+  --eslint \
+  --tailwind \
+  --app \
+  --src-dir
+```
+
+Pages:
+
+```text
+/login
+/issues
+```
+
+Flow:
+
+```text
+Login
+→ JWT保存
+→ Issue List
+→ Create
+→ Update
+→ Delete
+→ Logout
+```
+
+Phase 1では`localStorage`を使用する。  
+HttpOnly Cookie / Refresh Token / CSRFはPhase 5で扱う。
+
+---
+
+# Step 15 — GraphQL Request Helper
+
+```typescript
+export async function graphqlRequest<T>(
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<T> {
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem(
+          "accessToken",
+        )
+      : null;
+
+  const response = await fetch(
+    process.env
+      .NEXT_PUBLIC_GRAPHQL_URL!,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+
+        ...(token
+          ? {
+              Authorization:
+                `Bearer ${token}`,
+            }
+          : {}),
+      },
+      body: JSON.stringify({
+        query,
+        variables,
+      }),
+    },
+  );
+
+  const result = await response.json();
+
+  if (result.errors?.length) {
+    throw new Error(
+      result.errors[0].message
+    );
+  }
+
+  return result.data;
+}
 ```
 
 ---
 
-# Step 8.3 — GraphQL Integration Test
+# Step 16 — Filter / Search / Cursor Pagination
 
-## Test App
+Backend:
 
-`tests/conftest.py`
+```text
+status
+search
+cursor
+limit
+```
+
+Frontend:
+
+```text
+Filter
+Search
+Next Cursor
+```
+
+大量Data最適化はPhase 2で深掘りする。
+
+---
+
+# Step 17 — Backend Testing
+
+完成したBackend実装を対象にTestを追加する。
+
+Install:
+
+```bash
+uv add --dev \
+  pytest \
+  pytest-asyncio \
+  httpx
+```
+
+Test Client:
 
 ```python
 import pytest
@@ -1023,14 +961,9 @@ async def client():
         yield client
 ```
 
-## Authentication required
-
-`tests/test_graphql_auth.py`
+Authentication Test:
 
 ```python
-import pytest
-
-
 @pytest.mark.asyncio
 async def test_create_issue_requires_auth(
     client,
@@ -1061,141 +994,24 @@ async def test_create_issue_requires_auth(
     )
 ```
 
-> 実際のDBを使うIntegration Testでは、Test用DatabaseとFixtureを追加する。  
-> Phase 3でRepositoryを分離した後はUnit TestとIntegration Testの境界がより明確になる。
-
----
-
-# Step 9 — Next.js + Tailwind
-
-## Create
-
-```bash
-npx create-next-app@latest frontend \
-  --typescript \
-  --eslint \
-  --tailwind \
-  --app \
-  --src-dir
-```
-
----
-
-# Step 9.1 — GraphQL Client Helper
-
-`frontend/src/lib/graphql.ts`
-
-```typescript
-const GRAPHQL_URL =
-  process.env.NEXT_PUBLIC_GRAPHQL_URL
-  ?? "http://localhost:8000/graphql";
-
-
-type GraphQLResponse<T> = {
-  data?: T;
-  errors?: {
-    message: string;
-  }[];
-};
-
-
-export async function graphqlRequest<T>(
-  query: string,
-  variables?: Record<string, unknown>,
-): Promise<T> {
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem(
-          "accessToken",
-        )
-      : null;
-
-  const response = await fetch(
-    GRAPHQL_URL,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-
-        ...(token
-          ? {
-              Authorization:
-                `Bearer ${token}`,
-            }
-          : {}),
-      },
-      body: JSON.stringify({
-        query,
-        variables,
-      }),
-      cache: "no-store",
-    },
-  );
-
-  const result:
-    GraphQLResponse<T> =
-      await response.json();
-
-  if (result.errors?.length) {
-    throw new Error(
-      result.errors
-        .map(
-          (error) =>
-            error.message
-        )
-        .join("\n"),
-    );
-  }
-
-  if (!result.data) {
-    throw new Error(
-      "No GraphQL data"
-    );
-  }
-
-  return result.data;
-}
-```
-
----
-
-# Step 9.2 — Login UI
-
-Flow:
+Authenticated Integration Flow:
 
 ```text
-email / password
-→ login Mutation
-→ accessToken
-→ localStorage
-→ /issues
+register
+→ login
+→ token
+→ Authorization Header
+→ createIssue
+→ owner確認
 ```
 
-このPhaseではJWTの仕組みを理解しやすくするため`localStorage`を使用する。  
-HttpOnly Cookie / Refresh Token / CSRFはPhase 5で実装する。
+Test用Databaseは開発DBと分離する。
 
 ---
 
-# Step 9.3 — Issue CRUD UI
+# Step 18 — Frontend Unit / Component Test
 
-最低限以下を画面で確認する。
-
-```text
-Read
-Create
-Update
-Delete
-Logout
-```
-
-Tailwindのみ使用し、UI Libraryは追加しない。
-
----
-
-# Step 9.4 — Vitest
-
-## Install
+Install:
 
 ```bash
 npm install -D \
@@ -1206,9 +1022,7 @@ npm install -D \
   @testing-library/user-event
 ```
 
-## Pure Function例
-
-`src/lib/issue.ts`
+Vitest:
 
 ```typescript
 export function normalizeTitle(
@@ -1218,13 +1032,10 @@ export function normalizeTitle(
 }
 ```
 
-`src/lib/issue.test.ts`
-
 ```typescript
 import {
-  describe,
   expect,
-  it,
+  test,
 } from "vitest";
 
 import {
@@ -1232,54 +1043,26 @@ import {
 } from "./issue";
 
 
-describe(
-  "normalizeTitle",
+test(
+  "trims title",
   () => {
-    it(
-      "trims spaces",
-      () => {
-        expect(
-          normalizeTitle(
-            "  Issue  ",
-          ),
-        ).toBe("Issue");
-      },
-    );
+    expect(
+      normalizeTitle(
+        "  Issue  ",
+      ),
+    ).toBe("Issue");
   },
 );
 ```
 
-Run:
-
-```bash
-npx vitest
-```
-
----
-
-# Step 9.5 — React Testing Library
-
-Componentの内部stateではなく、Userが見る振る舞いをTestする。
-
-例:
+React Testing Library:
 
 ```tsx
-import {
-  render,
-  screen,
-} from "@testing-library/react";
-
-import userEvent from (
-  "@testing-library/user-event"
-);
-
-
 test(
-  "title can be entered",
+  "user can enter title",
   async () => {
-    const user = (
-      userEvent.setup()
-    );
+    const user =
+      userEvent.setup();
 
     render(
       <CreateIssueForm />
@@ -1292,11 +1075,11 @@ test(
 
     await user.type(
       input,
-      "Test Issue",
+      "New Issue",
     );
 
     expect(input).toHaveValue(
-      "Test Issue"
+      "New Issue"
     );
   },
 );
@@ -1304,42 +1087,31 @@ test(
 
 ---
 
-# Step 9.6 — Playwright E2E
+# Step 19 — Playwright E2E
 
-## Install
+Install:
 
 ```bash
 npm install -D @playwright/test
 npx playwright install
 ```
 
-## `playwright.config.ts`
+Scenario:
 
-```typescript
-import {
-  defineConfig,
-} from "@playwright/test";
-
-
-export default defineConfig({
-  use: {
-    baseURL:
-      "http://localhost:3000",
-  },
-});
+```text
+Login
+→ Issue List
+→ Create
+→ Update
+→ Delete
+→ Logout
 ```
 
-## `e2e/issues.spec.ts`
+Example:
 
 ```typescript
-import {
-  expect,
-  test,
-} from "@playwright/test";
-
-
 test(
-  "login and create issue",
+  "issue CRUD flow",
   async ({ page }) => {
     await page.goto(
       "/login"
@@ -1365,16 +1137,6 @@ test(
         },
       )
       .click();
-
-    await expect(
-      page
-        .getByRole(
-          "heading",
-          {
-            name: "Issues",
-          },
-        )
-    ).toBeVisible();
 
     await page
       .getByPlaceholder(
@@ -1402,41 +1164,11 @@ test(
 );
 ```
 
-Run:
-
-```bash
-npx playwright test
-```
-
 ---
 
-# Step 10 — Filter / Search / Cursor Pagination
+# Step 20 — Docker Integration
 
-Backend Queryへ以下を追加する。
-
-```text
-status
-search
-cursor
-limit
-```
-
-FrontendからFilterとSearchを操作し、Network TabでVariablesを確認する。
-
-Testing:
-
-```text
-status filter
-search keyword
-next cursor
-duplicate rowなし
-```
-
----
-
-# Step 11 — Docker
-
-Phase 1では全体接続を確認するための入門。
+Phase 1では以下をまとめて起動できればよい。
 
 ```text
 frontend
@@ -1444,28 +1176,26 @@ backend
 postgres
 ```
 
-をDockerで起動する。
-
-Production用Image最適化・Secret・Deployment StrategyはPhase 4で扱う。
+Production向け最適化はPhase 4で扱う。
 
 ---
 
-# Step 12 — AWS Entry
+# Step 21 — AWS Entry
 
-Phase 1ではServiceの役割だけ確認する。
+Phase 1では役割だけ理解する。
 
 ```text
 ECS
-→ Application Container
+→ Backend Container
 
 RDS
 → PostgreSQL
 
 S3 / CloudFront
-→ Frontend Static Asset候補
+→ Static Asset候補
 ```
 
-実際のVPC / Terraform / CI/CD / RollbackはPhase 4へ進める。
+VPC / Terraform / CI/CD / RollbackはPhase 4で扱う。
 
 ---
 
@@ -1474,19 +1204,21 @@ S3 / CloudFront
 ```text
 [ ] FastAPI
 [ ] Strawberry GraphQL
-[ ] Memory CRUD
 [ ] PostgreSQL
-[ ] Async SQLAlchemy
-[ ] SQL / Index基礎
+[ ] SQLAlchemy Async
+[ ] Issue CRUD
+[ ] SQL / Index / Transaction基礎
 [ ] User Relation
 [ ] DataLoader
 [ ] JWT
 [ ] GraphQL Context
-[ ] Next.js CRUD UI
+[ ] Next.js + Tailwind
+[ ] Login / CRUD / Logout UI
+[ ] Filter / Search / Cursor
+[ ] pytest / pytest-asyncio / httpx
 [ ] Vitest
 [ ] React Testing Library
 [ ] Playwright
-[ ] Filter / Search / Cursor
-[ ] Docker入門
-[ ] AWS入門
+[ ] Docker Integration
+[ ] AWS Entry
 ```
