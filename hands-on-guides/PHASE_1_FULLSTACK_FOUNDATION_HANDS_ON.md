@@ -514,12 +514,7 @@ Create:
 
 ```graphql
 mutation {
-  createIssue(
-    input: {
-      title: "First issue"
-      description: "PostgreSQL CRUD"
-    }
-  ) {
+  createIssue(input: { title: "First issue", description: "PostgreSQL CRUD" }) {
     id
     title
     status
@@ -543,12 +538,7 @@ Update:
 
 ```graphql
 mutation {
-  updateIssue(
-    id: 1
-    input: {
-      status: "DONE"
-    }
-  ) {
+  updateIssue(id: 1, input: { status: "DONE" }) {
     id
     status
   }
@@ -980,12 +970,8 @@ frontend/
 `src/graphql/login.graphql`:
 
 ```graphql
-mutation Login(
-  $input: LoginInput!
-) {
-  login(
-    input: $input
-  ) {
+mutation Login($input: LoginInput!) {
+  login(input: $input) {
     accessToken
 
     user {
@@ -1019,12 +1005,8 @@ query GetIssues {
 `src/graphql/create-issue.graphql`:
 
 ```graphql
-mutation CreateIssue(
-  $input: CreateIssueInput!
-) {
-  createIssue(
-    input: $input
-  ) {
+mutation CreateIssue($input: CreateIssueInput!) {
+  createIssue(input: $input) {
     id
     title
     description
@@ -1042,14 +1024,8 @@ mutation CreateIssue(
 `src/graphql/update-issue.graphql`:
 
 ```graphql
-mutation UpdateIssue(
-  $id: Int!
-  $input: UpdateIssueInput!
-) {
-  updateIssue(
-    id: $id
-    input: $input
-  ) {
+mutation UpdateIssue($id: Int!, $input: UpdateIssueInput!) {
+  updateIssue(id: $id, input: $input) {
     id
     title
     description
@@ -1061,12 +1037,8 @@ mutation UpdateIssue(
 `src/graphql/delete-issue.graphql`:
 
 ```graphql
-mutation DeleteIssue(
-  $id: Int!
-) {
-  deleteIssue(
-    id: $id
-  )
+mutation DeleteIssue($id: Int!) {
+  deleteIssue(id: $id)
 }
 ```
 
@@ -1075,30 +1047,19 @@ mutation DeleteIssue(
 `frontend/codegen.ts`:
 
 ```typescript
-import type {
-  CodegenConfig,
-} from "@graphql-codegen/cli";
+import type { CodegenConfig } from "@graphql-codegen/cli";
 
+const config: CodegenConfig = {
+  schema: "http://localhost:8000/graphql",
 
-const config:
-  CodegenConfig = {
-    schema:
-      "http://localhost:8000/graphql",
+  documents: "src/graphql/**/*.graphql",
 
-    documents:
-      "src/graphql/**/*.graphql",
-
-    generates: {
-      "src/generated/graphql.ts": {
-        plugins: [
-          "typescript",
-          "typescript-operations",
-          "typed-document-node",
-        ],
-      },
+  generates: {
+    "src/generated/graphql.ts": {
+      plugins: ["typescript-operations", "typed-document-node"],
     },
-  };
-
+  },
+};
 
 export default config;
 ```
@@ -1161,40 +1122,27 @@ CreateIssueMutationVariables
 そのため`graphql-request`に渡すと、ResponseとVariablesの型を自動的に推論できる。
 
 ```typescript
-import {
-  LoginDocument,
-} from "@/generated/graphql";
+import { LoginDocument } from "@/generated/graphql";
 
-import {
-  getGraphQLClient,
-} from "@/lib/graphql-client";
+import { getGraphQLClient } from "@/lib/graphql-client";
 
+const data = await getGraphQLClient().request(LoginDocument, {
+  input: {
+    email,
+    password,
+  },
+});
 
-const data =
-  await getGraphQLClient().request(
-    LoginDocument,
-    {
-      input: {
-        email,
-        password,
-      },
-    },
-  );
-
-
-localStorage.setItem(
-  "accessToken",
-  data.login.accessToken,
-);
+localStorage.setItem("accessToken", data.login.accessToken);
 ```
 
 ここでは`data`に手動で型を書く必要がない。
 
 ```typescript
-data.login.accessToken
-data.login.user.id
-data.login.user.name
-data.login.user.email
+data.login.accessToken;
+data.login.user.id;
+data.login.user.name;
+data.login.user.email;
 ```
 
 がCodegenによって型付けされる。
@@ -1202,7 +1150,7 @@ data.login.user.email
 存在しないFieldを書いた場合:
 
 ```typescript
-data.login.user.username
+data.login.user.username;
 ```
 
 Schema / Operationに`username`が存在しなければTypeScript Errorになる。
@@ -1214,25 +1162,16 @@ Schema / Operationに`username`が存在しなければTypeScript Errorになる
 必要であれば生成されたVariables Typeを明示的に利用できる。
 
 ```typescript
-import type {
-  LoginMutationVariables,
-} from "@/generated/graphql";
+import type { LoginMutationVariables } from "@/generated/graphql";
 
+const variables: LoginMutationVariables = {
+  input: {
+    email,
+    password,
+  },
+};
 
-const variables:
-  LoginMutationVariables = {
-    input: {
-      email,
-      password,
-    },
-  };
-
-
-const data =
-  await getGraphQLClient().request(
-    LoginDocument,
-    variables,
-  );
+const data = await getGraphQLClient().request(LoginDocument, variables);
 ```
 
 ただし通常は`LoginDocument`からVariables Typeが推論されるため、毎回明示的に書く必要はない。
@@ -1244,22 +1183,15 @@ const data =
 Issue型をFrontend側で手書きしない。
 
 ```typescript
-import type {
-  GetIssuesQuery,
-} from "@/generated/graphql";
+import type { GetIssuesQuery } from "@/generated/graphql";
 
-
-type Issue =
-  GetIssuesQuery["issues"][number];
+type Issue = GetIssuesQuery["issues"][number];
 ```
 
 これにより:
 
 ```typescript
-const [
-  issues,
-  setIssues,
-] = useState<Issue[]>([]);
+const [issues, setIssues] = useState<Issue[]>([]);
 ```
 
 の`Issue`型がGraphQL Operationと同期する。
@@ -1310,35 +1242,21 @@ React UI
 `src/lib/graphql-client.ts`:
 
 ```typescript
-import {
-  GraphQLClient,
-} from "graphql-request";
+import { GraphQLClient } from "graphql-request";
 
-
-const endpoint =
-  process.env
-    .NEXT_PUBLIC_GRAPHQL_URL!;
-
+const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_URL!;
 
 export function getGraphQLClient() {
   const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem(
-          "accessToken",
-        )
-      : null;
+    typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
 
-  return new GraphQLClient(
-    endpoint,
-    {
-      headers: token
-        ? {
-            Authorization:
-              `Bearer ${token}`,
-          }
-        : {},
-    },
-  );
+  return new GraphQLClient(endpoint, {
+    headers: token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : {},
+  });
 }
 ```
 
@@ -1346,13 +1264,13 @@ export function getGraphQLClient() {
 Phase 2でApollo Clientを導入し、GraphQL Cacheを本格的に学ぶ。
 
 ---
+
 ## Step 14.5 — Root Page
 
 `frontend/src/app/page.tsx`:
 
 ```tsx
 import Link from "next/link";
-
 
 export default function Home() {
   return (
@@ -1447,96 +1365,54 @@ Email / Password入力
 ```tsx
 "use client";
 
-import {
-  FormEvent,
-  useState,
-} from "react";
+import { FormEvent, useState } from "react";
 
-import {
-  useRouter,
-} from "next/navigation";
+import { useRouter } from "next/navigation";
 
-import {
-  LoginDocument,
-} from "@/generated/graphql";
+import { LoginDocument } from "@/generated/graphql";
 
-import {
-  getGraphQLClient,
-} from "@/lib/graphql-client";
-
+import { getGraphQLClient } from "@/lib/graphql-client";
 
 export default function LoginPage() {
   const router = useRouter();
 
-  const [
-    email,
-    setEmail,
-  ] = useState("");
+  const [email, setEmail] = useState("");
 
-  const [
-    password,
-    setPassword,
-  ] = useState("");
+  const [password, setPassword] = useState("");
 
-  const [
-    error,
-    setError,
-  ] = useState("");
+  const [error, setError] = useState("");
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setError("");
     setLoading(true);
 
     try {
-      const client =
-        getGraphQLClient();
+      const client = getGraphQLClient();
 
-      const data =
-        await client.request(
-          LoginDocument,
-          {
-            input: {
-              email,
-              password,
-            },
-          },
-        );
+      const data = await client.request(LoginDocument, {
+        input: {
+          email,
+          password,
+        },
+      });
 
       if (!data.login) {
-        throw new Error(
-          "Login failed",
-        );
+        throw new Error("Login failed");
       }
 
-      localStorage.setItem(
-        "accessToken",
-        data.login.accessToken,
-      );
+      localStorage.setItem("accessToken", data.login.accessToken);
 
-      router.push(
-        "/issues",
-      );
+      router.push("/issues");
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
-      );
+      setError(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   }
-
 
   return (
     <main
@@ -1550,9 +1426,7 @@ export default function LoginPage() {
       "
     >
       <form
-        onSubmit={
-          handleSubmit
-        }
+        onSubmit={handleSubmit}
         className="
           w-full
           space-y-4
@@ -1598,12 +1472,7 @@ export default function LoginPage() {
           <input
             type="email"
             value={email}
-            onChange={
-              (event) =>
-                setEmail(
-                  event.target.value,
-                )
-            }
+            onChange={(event) => setEmail(event.target.value)}
             required
             className="
               w-full
@@ -1631,12 +1500,7 @@ export default function LoginPage() {
           <input
             type="password"
             value={password}
-            onChange={
-              (event) =>
-                setPassword(
-                  event.target.value,
-                )
-            }
+            onChange={(event) => setPassword(event.target.value)}
             required
             className="
               w-full
@@ -1676,11 +1540,7 @@ export default function LoginPage() {
             disabled:opacity-50
           "
         >
-          {
-            loading
-              ? "Logging in..."
-              : "Login"
-          }
+          {loading ? "Logging in..." : "Login"}
         </button>
       </form>
     </main>
@@ -1717,16 +1577,9 @@ LOGOUT → Token削除
 ```tsx
 "use client";
 
-import {
-  FormEvent,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
-import {
-  useRouter,
-} from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import {
   CreateIssueDocument,
@@ -1736,107 +1589,54 @@ import {
   type GetIssuesQuery,
 } from "@/generated/graphql";
 
-import {
-  getGraphQLClient,
-} from "@/lib/graphql-client";
+import { getGraphQLClient } from "@/lib/graphql-client";
 
-
-type Issue =
-  GetIssuesQuery["issues"][number];
-
+type Issue = GetIssuesQuery["issues"][number];
 
 export default function IssuesPage() {
   const router = useRouter();
 
-  const [
-    issues,
-    setIssues,
-  ] = useState<Issue[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
 
-  const [
-    title,
-    setTitle,
-  ] = useState("");
+  const [title, setTitle] = useState("");
 
-  const [
-    description,
-    setDescription,
-  ] = useState("");
+  const [description, setDescription] = useState("");
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [
-    saving,
-    setSaving,
-  ] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [
-    error,
-    setError,
-  ] = useState("");
+  const [error, setError] = useState("");
 
+  const loadIssues = useCallback(async () => {
+    setError("");
 
-  const loadIssues =
-    useCallback(
-      async () => {
-        setError("");
+    try {
+      const client = getGraphQLClient();
 
-        try {
-          const client =
-            getGraphQLClient();
+      const data = await client.request(GetIssuesDocument);
 
-          const data =
-            await client.request(
-              GetIssuesDocument,
-            );
+      setIssues(data.issues);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-          setIssues(
-            data.issues,
-          );
-        } catch (error) {
-          setError(
-            error instanceof Error
-              ? error.message
-              : "Unknown error",
-          );
-        } finally {
-          setLoading(false);
-        }
-      },
-      [],
-    );
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
 
+    if (!token) {
+      router.replace("/login");
 
-  useEffect(
-    () => {
-      const token =
-        localStorage.getItem(
-          "accessToken",
-        );
+      return;
+    }
 
-      if (!token) {
-        router.replace(
-          "/login",
-        );
+    void loadIssues();
+  }, [loadIssues, router]);
 
-        return;
-      }
-
-      void loadIssues();
-    },
-    [
-      loadIssues,
-      router,
-    ],
-  );
-
-
-  async function handleCreate(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!title.trim()) {
@@ -1847,130 +1647,78 @@ export default function IssuesPage() {
     setError("");
 
     try {
-      const data =
-        await getGraphQLClient().request(
-          CreateIssueDocument,
-          {
-            input: {
-              title,
-              description:
-                description || null,
-            },
-          },
-        );
+      const data = await getGraphQLClient().request(CreateIssueDocument, {
+        input: {
+          title,
+          description: description || null,
+        },
+      });
 
-      setIssues(
-        (current) => [
-          ...current,
-          data.createIssue,
-        ],
-      );
+      setIssues((current) => [...current, data.createIssue]);
 
       setTitle("");
       setDescription("");
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
-      );
+      setError(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setSaving(false);
     }
   }
 
-
-  async function markDone(
-    issueId: number,
-  ) {
+  async function markDone(issueId: number) {
     setError("");
 
     try {
-      const data =
-        await getGraphQLClient().request(
-          UpdateIssueDocument,
-          {
-            id: issueId,
+      const data = await getGraphQLClient().request(UpdateIssueDocument, {
+        id: issueId,
 
-            input: {
-              status: "DONE",
-            },
-          },
-        );
+        input: {
+          status: "DONE",
+        },
+      });
 
       if (!data.updateIssue) {
         return;
       }
 
-      setIssues(
-        (current) =>
-          current.map(
-            (issue) =>
-              issue.id === issueId
-                ? {
-                    ...issue,
-                    status:
-                      data.updateIssue!
-                        .status,
-                  }
-                : issue,
-          ),
+      setIssues((current) =>
+        current.map((issue) =>
+          issue.id === issueId
+            ? {
+                ...issue,
+                status: data.updateIssue!.status,
+              }
+            : issue,
+        ),
       );
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
-      );
+      setError(error instanceof Error ? error.message : "Unknown error");
     }
   }
 
-
-  async function removeIssue(
-    issueId: number,
-  ) {
+  async function removeIssue(issueId: number) {
     setError("");
 
     try {
-      const data =
-        await getGraphQLClient().request(
-          DeleteIssueDocument,
-          {
-            id: issueId,
-          },
-        );
+      const data = await getGraphQLClient().request(DeleteIssueDocument, {
+        id: issueId,
+      });
 
       if (!data.deleteIssue) {
         return;
       }
 
-      setIssues(
-        (current) =>
-          current.filter(
-            (issue) =>
-              issue.id !== issueId,
-          ),
-      );
+      setIssues((current) => current.filter((issue) => issue.id !== issueId));
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
-      );
+      setError(error instanceof Error ? error.message : "Unknown error");
     }
   }
 
-
   function logout() {
-    localStorage.removeItem(
-      "accessToken",
-    );
+    localStorage.removeItem("accessToken");
 
-    router.replace(
-      "/login",
-    );
+    router.replace("/login");
   }
-
 
   return (
     <main
@@ -2026,9 +1774,7 @@ export default function IssuesPage() {
       </header>
 
       <form
-        onSubmit={
-          handleCreate
-        }
+        onSubmit={handleCreate}
         className="
           space-y-3
           rounded-lg
@@ -2048,12 +1794,7 @@ export default function IssuesPage() {
 
         <input
           value={title}
-          onChange={
-            (event) =>
-              setTitle(
-                event.target.value,
-              )
-          }
+          onChange={(event) => setTitle(event.target.value)}
           placeholder="Title"
           className="
             w-full
@@ -2067,12 +1808,7 @@ export default function IssuesPage() {
 
         <textarea
           value={description}
-          onChange={
-            (event) =>
-              setDescription(
-                event.target.value,
-              )
-          }
+          onChange={(event) => setDescription(event.target.value)}
           placeholder="Description"
           className="
             min-h-24
@@ -2097,11 +1833,7 @@ export default function IssuesPage() {
             disabled:opacity-50
           "
         >
-          {
-            saving
-              ? "Creating..."
-              : "Create"
-          }
+          {saving ? "Creating..." : "Create"}
         </button>
       </form>
 
@@ -2120,9 +1852,7 @@ export default function IssuesPage() {
       )}
 
       {loading ? (
-        <p>
-          Loading...
-        </p>
+        <p>Loading...</p>
       ) : (
         <section
           className="
@@ -2139,99 +1869,88 @@ export default function IssuesPage() {
             </p>
           )}
 
-          {issues.map(
-            (issue) => (
-              <article
-                key={issue.id}
-                className="
+          {issues.map((issue) => (
+            <article
+              key={issue.id}
+              className="
                   rounded-lg
                   border
                   border-gray-200
                   p-4
                 "
-              >
-                <div
-                  className="
+            >
+              <div
+                className="
                     flex
                     items-start
                     justify-between
                     gap-4
                   "
-                >
-                  <div>
-                    <div
-                      className="
+              >
+                <div>
+                  <div
+                    className="
                         flex
                         items-center
                         gap-2
                       "
-                    >
-                      <h2
-                        className="
+                  >
+                    <h2
+                      className="
                           font-semibold
                         "
-                      >
-                        {issue.title}
-                      </h2>
+                    >
+                      {issue.title}
+                    </h2>
 
-                      <span
-                        className="
+                    <span
+                      className="
                           rounded
                           bg-gray-100
                           px-2
                           py-1
                           text-xs
                         "
-                      >
-                        {issue.status}
-                      </span>
-                    </div>
+                    >
+                      {issue.status}
+                    </span>
+                  </div>
 
-                    {issue.description && (
-                      <p
-                        className="
+                  {issue.description && (
+                    <p
+                      className="
                           mt-2
                           text-sm
                           text-gray-600
                         "
-                      >
-                        {
-                          issue.description
-                        }
-                      </p>
-                    )}
+                    >
+                      {issue.description}
+                    </p>
+                  )}
 
-                    <p
-                      className="
+                  <p
+                    className="
                         mt-2
                         text-xs
                         text-gray-400
                       "
-                    >
-                      Owner:
-                      {" "}
-                      {issue.owner.name}
-                    </p>
-                  </div>
+                  >
+                    Owner: {issue.owner.name}
+                  </p>
+                </div>
 
-                  <div
-                    className="
+                <div
+                  className="
                       flex
                       shrink-0
                       gap-2
                     "
-                  >
-                    {issue.status !==
-                      "DONE" && (
-                      <button
-                        type="button"
-                        onClick={
-                          () =>
-                            void markDone(
-                              issue.id,
-                            )
-                        }
-                        className="
+                >
+                  {issue.status !== "DONE" && (
+                    <button
+                      type="button"
+                      onClick={() => void markDone(issue.id)}
+                      className="
                           rounded
                           border
                           border-gray-300
@@ -2239,20 +1958,15 @@ export default function IssuesPage() {
                           py-1
                           text-sm
                         "
-                      >
-                        Done
-                      </button>
-                    )}
+                    >
+                      Done
+                    </button>
+                  )}
 
-                    <button
-                      type="button"
-                      onClick={
-                        () =>
-                          void removeIssue(
-                            issue.id,
-                          )
-                      }
-                      className="
+                  <button
+                    type="button"
+                    onClick={() => void removeIssue(issue.id)}
+                    className="
                         rounded
                         bg-red-600
                         px-3
@@ -2260,14 +1974,13 @@ export default function IssuesPage() {
                         text-sm
                         text-white
                       "
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  >
+                    Delete
+                  </button>
                 </div>
-              </article>
-            ),
-          )}
+              </div>
+            </article>
+          ))}
         </section>
       )}
     </main>
@@ -2428,6 +2141,7 @@ Frontendにも簡単なFilter / Search UIを追加し、Network TabでGraphQL Va
 大量DataでのPagination / Infinite Scroll / VirtualizationはPhase 2で深掘りする。
 
 ---
+
 # Step 17 — Backend Testing
 
 完成したBackend実装を対象にTestを追加する。
@@ -2530,64 +2244,35 @@ npm install -D \
 Vitest:
 
 ```typescript
-export function normalizeTitle(
-  title: string,
-) {
+export function normalizeTitle(title: string) {
   return title.trim();
 }
 ```
 
 ```typescript
-import {
-  expect,
-  test,
-} from "vitest";
+import { expect, test } from "vitest";
 
-import {
-  normalizeTitle,
-} from "./issue";
+import { normalizeTitle } from "./issue";
 
-
-test(
-  "trims title",
-  () => {
-    expect(
-      normalizeTitle(
-        "  Issue  ",
-      ),
-    ).toBe("Issue");
-  },
-);
+test("trims title", () => {
+  expect(normalizeTitle("  Issue  ")).toBe("Issue");
+});
 ```
 
 React Testing Library:
 
 ```tsx
-test(
-  "user can enter title",
-  async () => {
-    const user =
-      userEvent.setup();
+test("user can enter title", async () => {
+  const user = userEvent.setup();
 
-    render(
-      <CreateIssueForm />
-    );
+  render(<CreateIssueForm />);
 
-    const input =
-      screen.getByPlaceholderText(
-        "Title",
-      );
+  const input = screen.getByPlaceholderText("Title");
 
-    await user.type(
-      input,
-      "New Issue",
-    );
+  await user.type(input, "New Issue");
 
-    expect(input).toHaveValue(
-      "New Issue"
-    );
-  },
-);
+  expect(input).toHaveValue("New Issue");
+});
 ```
 
 ---
@@ -2615,58 +2300,29 @@ Login
 Example:
 
 ```typescript
-test(
-  "issue CRUD flow",
-  async ({ page }) => {
-    await page.goto(
-      "/login"
-    );
+test("issue CRUD flow", async ({ page }) => {
+  await page.goto("/login");
 
-    await page
-      .getByLabel("Email")
-      .fill(
-        "hwang@example.com"
-      );
+  await page.getByLabel("Email").fill("hwang@example.com");
 
-    await page
-      .getByLabel("Password")
-      .fill(
-        "password123"
-      );
+  await page.getByLabel("Password").fill("password123");
 
-    await page
-      .getByRole(
-        "button",
-        {
-          name: "Login",
-        },
-      )
-      .click();
+  await page
+    .getByRole("button", {
+      name: "Login",
+    })
+    .click();
 
-    await page
-      .getByPlaceholder(
-        "Title"
-      )
-      .fill(
-        "E2E Issue"
-      );
+  await page.getByPlaceholder("Title").fill("E2E Issue");
 
-    await page
-      .getByRole(
-        "button",
-        {
-          name: "Create",
-        },
-      )
-      .click();
+  await page
+    .getByRole("button", {
+      name: "Create",
+    })
+    .click();
 
-    await expect(
-      page.getByText(
-        "E2E Issue"
-      )
-    ).toBeVisible();
-  },
-);
+  await expect(page.getByText("E2E Issue")).toBeVisible();
+});
 ```
 
 ---
