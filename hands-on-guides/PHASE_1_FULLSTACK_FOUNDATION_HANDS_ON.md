@@ -853,7 +853,7 @@ yarn create next-app frontend \
 
 ```bash
 cd frontend
-yarn dev
+npm run dev
 ```
 
 Browser:
@@ -924,7 +924,7 @@ NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8000/graphql
 Environment Variable追加後はDev Serverを再起動する。
 
 ```bash
-yarn dev
+npm run dev
 ```
 
 ---
@@ -945,11 +945,11 @@ FrontendではGraphQL OperationをComponent内のStringとして管理しない�
 ### Install
 
 ```bash
-yarn add \
+npm install \
   graphql \
   graphql-request
 
-yarn add -D \
+npm install -D \
   @graphql-codegen/cli \
   @graphql-codegen/typescript \
   @graphql-codegen/typescript-operations \
@@ -1116,7 +1116,7 @@ export default config;
 Backendを起動した状態で実行する。
 
 ```bash
-yarn codegen
+npm run codegen
 ```
 
 生成例:
@@ -1130,6 +1130,180 @@ CreateIssueDocument
 UpdateIssueDocument
 DeleteIssueDocument
 ```
+
+### 生成されたType / Documentを実際に使う
+
+CodegenはTypeを生成するだけで終わりではない。
+
+このPhaseでは、生成されたTypeと`TypedDocumentNode`を実際のFrontendコードで使う。
+
+生成された代表的なもの:
+
+```text
+LoginDocument
+LoginMutation
+LoginMutationVariables
+
+GetIssuesDocument
+GetIssuesQuery
+
+CreateIssueDocument
+CreateIssueMutation
+CreateIssueMutationVariables
+```
+
+---
+
+#### `LoginDocument`でResponse / Variablesの型を自動推論する
+
+`LoginDocument`は単なる文字列ではなく、Codegenが生成した`TypedDocumentNode`。
+
+そのため`graphql-request`に渡すと、ResponseとVariablesの型を自動的に推論できる。
+
+```typescript
+import {
+  LoginDocument,
+} from "@/generated/graphql";
+
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
+
+
+const data =
+  await getGraphQLClient().request(
+    LoginDocument,
+    {
+      input: {
+        email,
+        password,
+      },
+    },
+  );
+
+
+localStorage.setItem(
+  "accessToken",
+  data.login.accessToken,
+);
+```
+
+ここでは`data`に手動で型を書く必要がない。
+
+```typescript
+data.login.accessToken
+data.login.user.id
+data.login.user.name
+data.login.user.email
+```
+
+がCodegenによって型付けされる。
+
+存在しないFieldを書いた場合:
+
+```typescript
+data.login.user.username
+```
+
+Schema / Operationに`username`が存在しなければTypeScript Errorになる。
+
+---
+
+#### Variablesの型もCodegenから取得できる
+
+必要であれば生成されたVariables Typeを明示的に利用できる。
+
+```typescript
+import type {
+  LoginMutationVariables,
+} from "@/generated/graphql";
+
+
+const variables:
+  LoginMutationVariables = {
+    input: {
+      email,
+      password,
+    },
+  };
+
+
+const data =
+  await getGraphQLClient().request(
+    LoginDocument,
+    variables,
+  );
+```
+
+ただし通常は`LoginDocument`からVariables Typeが推論されるため、毎回明示的に書く必要はない。
+
+---
+
+#### Query Response TypeをUI Stateに利用する
+
+Issue型をFrontend側で手書きしない。
+
+```typescript
+import type {
+  GetIssuesQuery,
+} from "@/generated/graphql";
+
+
+type Issue =
+  GetIssuesQuery["issues"][number];
+```
+
+これにより:
+
+```typescript
+const [
+  issues,
+  setIssues,
+] = useState<Issue[]>([]);
+```
+
+の`Issue`型がGraphQL Operationと同期する。
+
+Backend Schemaまたは`.graphql` Operationを変更した場合:
+
+```bash
+npm run codegen
+```
+
+を再実行する。
+
+するとGenerated Typeが更新され、Frontend側で影響箇所をTypeScript Errorとして確認できる。
+
+---
+
+#### このPhaseで確認すること
+
+```text
+1. .graphql Fileを変更
+2. npm run codegen
+3. src/generated/graphql.tsが更新される
+4. Generated Documentをgraphql-requestへ渡す
+5. Response / Variablesが自動で型付けされる
+6. Generated Query TypeをUI Stateにも利用する
+```
+
+つまりこのPhaseの目的は:
+
+```text
+Backend Schema
+↓
+.graphql Operation
+↓
+Codegen
+↓
+TypedDocumentNode + TypeScript Type
+↓
+graphql-request
+↓
+React UI
+```
+
+までを一つの流れとして理解すること。
 
 ### GraphQL Client
 
@@ -2118,7 +2292,7 @@ Frontend:
 
 ```bash
 cd frontend
-yarn dev
+npm run dev
 ```
 
 Browser:
@@ -2345,7 +2519,7 @@ Test用Databaseは開発DBと分離する。
 Install:
 
 ```bash
-yarn add -D \
+npm install -D \
   vitest \
   jsdom \
   @testing-library/react \
@@ -2423,8 +2597,8 @@ test(
 Install:
 
 ```bash
-yarn add -D @playwright/test
-yarn playwright install
+npm install -D @playwright/test
+npx playwright install
 ```
 
 Scenario:
