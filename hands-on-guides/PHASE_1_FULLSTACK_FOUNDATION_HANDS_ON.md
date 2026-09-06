@@ -814,7 +814,31 @@ async def create_issue(
 
 ---
 
-# Step 14 — Next.js + Tailwind
+# Step 14 — Next.js + Tailwindで実際の画面を作る
+
+## Goal
+
+GraphiQLで確認してきたLogin / JWT / Issue CRUDを、今度はBrowser上の実画面から操作する。
+
+この段階ではFrontend側の仕組みを見えやすくするため、Apollo Client、urql、TanStack Query、Zustandなどはまだ追加しない。
+
+```text
+Next.js App Router
+TypeScript
+Tailwind CSS
+fetch
+localStorage
+```
+
+だけで完成させる。
+
+> Phase 1ではJWTの仕組みを確認しやすくするため`localStorage`を使用する。HttpOnly Cookie / Refresh Token / CSRFはPhase 5で扱う。
+
+---
+
+## Step 14.1 — Next.js Project作成
+
+Project rootで実行する。
 
 ```bash
 npx create-next-app@latest frontend \
@@ -822,36 +846,111 @@ npx create-next-app@latest frontend \
   --eslint \
   --tailwind \
   --app \
-  --src-dir
+  --src-dir \
+  --use-npm
 ```
 
-Pages:
+起動:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Browser:
 
 ```text
-/login
-/issues
+http://localhost:3000
 ```
 
-Flow:
+Frontendの構成:
 
 ```text
-Login
-→ JWT保存
-→ Issue List
-→ Create
-→ Update
-→ Delete
-→ Logout
+frontend/
+├── .env.local
+├── src/
+│   ├── app/
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   ├── login/
+│   │   │   └── page.tsx
+│   │   └── issues/
+│   │       └── page.tsx
+│   └── lib/
+│       └── graphql.ts
+└── package.json
 ```
-
-Phase 1では`localStorage`を使用する。  
-HttpOnly Cookie / Refresh Token / CSRFはPhase 5で扱う。
 
 ---
 
-# Step 15 — GraphQL Request Helper
+## Step 14.2 — Backend CORS
+
+Frontendは`http://localhost:3000`、Backendは`http://localhost:8000`なので、開発環境ではCORSを許可する。
+
+`src/app/main.py`:
+
+```python
+from fastapi.middleware.cors import (
+    CORSMiddleware,
+)
+```
+
+`app = FastAPI(...)`の後に追加する。
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+Productionでは実際のFrontend Originだけを許可する。
+
+---
+
+## Step 14.3 — GraphQL URL
+
+`frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8000/graphql
+```
+
+Environment Variable追加後はDev Serverを再起動する。
+
+```bash
+npm run dev
+```
+
+---
+
+## Step 14.4 — GraphQL Request Helper
+
+`frontend/src/lib/graphql.ts`:
 
 ```typescript
+const GRAPHQL_URL =
+  process.env.NEXT_PUBLIC_GRAPHQL_URL
+  ?? "http://localhost:8000/graphql";
+
+
+type GraphQLError = {
+  message: string;
+};
+
+
+type GraphQLResponse<T> = {
+  data?: T;
+  errors?: GraphQLError[];
+};
+
+
 export async function graphqlRequest<T>(
   query: string,
   variables?: Record<string, unknown>,
@@ -864,13 +963,12 @@ export async function graphqlRequest<T>(
       : null;
 
   const response = await fetch(
-    process.env
-      .NEXT_PUBLIC_GRAPHQL_URL!,
+    GRAPHQL_URL,
     {
       method: "POST",
+
       headers: {
-        "Content-Type":
-          "application/json",
+        "Content-Type": "application/json",
 
         ...(token
           ? {
@@ -879,18 +977,35 @@ export async function graphqlRequest<T>(
             }
           : {}),
       },
+
       body: JSON.stringify({
         query,
         variables,
       }),
+
+      cache: "no-store",
     },
   );
 
-  const result = await response.json();
+  const result:
+    GraphQLResponse<T> =
+      await response.json();
 
   if (result.errors?.length) {
     throw new Error(
-      result.errors[0].message
+      result.errors
+        .map(
+          (error) =>
+            error.message,
+        )
+        .join("
+"),
+    );
+  }
+
+  if (!result.data) {
+    throw new Error(
+      "GraphQL response has no data",
     );
   }
 
@@ -898,11 +1013,1214 @@ export async function graphqlRequest<T>(
 }
 ```
 
+Requestの流れ:
+
+```text
+React Component
+  ↓
+graphqlRequest()
+  ↓
+POST /graphql
+  ↓
+Authorization: Bearer JWT
+  ↓
+FastAPI / Strawberry
+```
+
+GraphQL Client Libraryを入れなくても、GraphQLはHTTP Requestとして送信できることをここで確認する。
+
 ---
 
-# Step 16 — Filter / Search / Cursor Pagination
+## Step 14.5 — Root Page
+
+`frontend/src/app/page.tsx`:
+
+```tsx
+import Link from "next/link";
+
+
+export default function Home() {
+  return (
+    <main
+      className="
+        mx-auto
+        flex
+        min-h-screen
+        max-w-2xl
+        flex-col
+        justify-center
+        gap-6
+        p-6
+      "
+    >
+      <div>
+        <h1
+          className="
+            text-3xl
+            font-bold
+          "
+        >
+          Issue Tracker
+        </h1>
+
+        <p
+          className="
+            mt-2
+            text-sm
+            text-gray-600
+          "
+        >
+          FastAPI + GraphQL + Next.js
+        </p>
+      </div>
+
+      <div
+        className="
+          flex
+          gap-3
+        "
+      >
+        <Link
+          href="/login"
+          className="
+            rounded
+            bg-black
+            px-4
+            py-2
+            text-white
+          "
+        >
+          Login
+        </Link>
+
+        <Link
+          href="/issues"
+          className="
+            rounded
+            border
+            border-gray-300
+            px-4
+            py-2
+          "
+        >
+          Issues
+        </Link>
+      </div>
+    </main>
+  );
+}
+```
+
+`/login`と`/issues`へ移動できることを確認する。
+
+---
+
+## Step 14.6 — Login Page
+
+この画面で次のFlowを確認する。
+
+```text
+Email / Password入力
+→ login Mutation
+→ accessToken取得
+→ localStorage保存
+→ /issuesへ移動
+```
+
+`frontend/src/app/login/page.tsx`:
+
+```tsx
+"use client";
+
+import {
+  FormEvent,
+  useState,
+} from "react";
+
+import {
+  useRouter,
+} from "next/navigation";
+
+import {
+  graphqlRequest,
+} from "@/lib/graphql";
+
+
+const LOGIN = `
+  mutation Login(
+    $input: LoginInput!
+  ) {
+    login(
+      input: $input
+    ) {
+      accessToken
+
+      user {
+        id
+        name
+        email
+      }
+    }
+  }
+`;
+
+
+type LoginResponse = {
+  login: {
+    accessToken: string;
+
+    user: {
+      id: number;
+      name: string;
+      email: string;
+    };
+  } | null;
+};
+
+
+export default function LoginPage() {
+  const router = useRouter();
+
+  const [
+    email,
+    setEmail,
+  ] = useState("");
+
+  const [
+    password,
+    setPassword,
+  ] = useState("");
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    setError("");
+    setLoading(true);
+
+    try {
+      const data =
+        await graphqlRequest<LoginResponse>(
+          LOGIN,
+          {
+            input: {
+              email,
+              password,
+            },
+          },
+        );
+
+      if (!data.login) {
+        throw new Error(
+          "Login failed",
+        );
+      }
+
+      localStorage.setItem(
+        "accessToken",
+        data.login.accessToken,
+      );
+
+      router.push(
+        "/issues",
+      );
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+
+  return (
+    <main
+      className="
+        mx-auto
+        flex
+        min-h-screen
+        max-w-md
+        items-center
+        p-6
+      "
+    >
+      <form
+        onSubmit={
+          handleSubmit
+        }
+        className="
+          w-full
+          space-y-4
+          rounded-lg
+          border
+          border-gray-200
+          p-6
+        "
+      >
+        <div>
+          <h1
+            className="
+              text-2xl
+              font-bold
+            "
+          >
+            Login
+          </h1>
+
+          <p
+            className="
+              mt-1
+              text-sm
+              text-gray-500
+            "
+          >
+            GraphQL JWT login
+          </p>
+        </div>
+
+        <div>
+          <label
+            className="
+              mb-1
+              block
+              text-sm
+              font-medium
+            "
+          >
+            Email
+          </label>
+
+          <input
+            type="email"
+            value={email}
+            onChange={
+              (event) =>
+                setEmail(
+                  event.target.value,
+                )
+            }
+            required
+            className="
+              w-full
+              rounded
+              border
+              border-gray-300
+              px-3
+              py-2
+            "
+          />
+        </div>
+
+        <div>
+          <label
+            className="
+              mb-1
+              block
+              text-sm
+              font-medium
+            "
+          >
+            Password
+          </label>
+
+          <input
+            type="password"
+            value={password}
+            onChange={
+              (event) =>
+                setPassword(
+                  event.target.value,
+                )
+            }
+            required
+            className="
+              w-full
+              rounded
+              border
+              border-gray-300
+              px-3
+              py-2
+            "
+          />
+        </div>
+
+        {error && (
+          <p
+            className="
+              rounded
+              bg-red-50
+              p-3
+              text-sm
+              text-red-700
+            "
+          >
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="
+            w-full
+            rounded
+            bg-black
+            px-4
+            py-2
+            text-white
+            disabled:opacity-50
+          "
+        >
+          {
+            loading
+              ? "Logging in..."
+              : "Login"
+          }
+        </button>
+      </form>
+    </main>
+  );
+}
+```
+
+確認ポイント:
+
+```text
+1. Email / Passwordを入力できる
+2. Login中はButtonがdisabledになる
+3. Error時はMessageが表示される
+4. Success時はaccessTokenが保存される
+5. /issuesへ遷移する
+```
+
+---
+
+## Step 14.7 — Issue CRUD Page
+
+1画面で以下を確認する。
+
+```text
+READ   → Issue List
+CREATE → FormからIssue作成
+UPDATE → Done Button
+DELETE → Delete Button
+LOGOUT → Token削除
+```
+
+`frontend/src/app/issues/page.tsx`:
+
+```tsx
+"use client";
+
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  useRouter,
+} from "next/navigation";
+
+import {
+  graphqlRequest,
+} from "@/lib/graphql";
+
+
+type Issue = {
+  id: number;
+  title: string;
+  description: string | null;
+  status: string;
+
+  owner: {
+    id: number;
+    name: string;
+    email: string;
+  };
+};
+
+
+const GET_ISSUES = `
+  query GetIssues {
+    issues {
+      id
+      title
+      description
+      status
+
+      owner {
+        id
+        name
+        email
+      }
+    }
+  }
+`;
+
+
+const CREATE_ISSUE = `
+  mutation CreateIssue(
+    $input: CreateIssueInput!
+  ) {
+    createIssue(
+      input: $input
+    ) {
+      id
+      title
+      description
+      status
+
+      owner {
+        id
+        name
+        email
+      }
+    }
+  }
+`;
+
+
+const UPDATE_ISSUE = `
+  mutation UpdateIssue(
+    $id: Int!
+    $input: UpdateIssueInput!
+  ) {
+    updateIssue(
+      id: $id
+      input: $input
+    ) {
+      id
+      title
+      description
+      status
+    }
+  }
+`;
+
+
+const DELETE_ISSUE = `
+  mutation DeleteIssue(
+    $id: Int!
+  ) {
+    deleteIssue(
+      id: $id
+    )
+  }
+`;
+
+
+type IssuesResponse = {
+  issues: Issue[];
+};
+
+
+type CreateIssueResponse = {
+  createIssue: Issue;
+};
+
+
+type UpdateIssueResponse = {
+  updateIssue: Issue | null;
+};
+
+
+type DeleteIssueResponse = {
+  deleteIssue: boolean;
+};
+
+
+export default function IssuesPage() {
+  const router = useRouter();
+
+  const [
+    issues,
+    setIssues,
+  ] = useState<Issue[]>([]);
+
+  const [
+    title,
+    setTitle,
+  ] = useState("");
+
+  const [
+    description,
+    setDescription,
+  ] = useState("");
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+
+  const loadIssues =
+    useCallback(
+      async () => {
+        setError("");
+
+        try {
+          const data =
+            await graphqlRequest<
+              IssuesResponse
+            >(
+              GET_ISSUES,
+            );
+
+          setIssues(
+            data.issues,
+          );
+        } catch (error) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Unknown error",
+          );
+        } finally {
+          setLoading(false);
+        }
+      },
+      [],
+    );
+
+
+  useEffect(
+    () => {
+      const token =
+        localStorage.getItem(
+          "accessToken",
+        );
+
+      if (!token) {
+        router.replace(
+          "/login",
+        );
+
+        return;
+      }
+
+      void loadIssues();
+    },
+    [
+      loadIssues,
+      router,
+    ],
+  );
+
+
+  async function handleCreate(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    if (!title.trim()) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const data =
+        await graphqlRequest<
+          CreateIssueResponse
+        >(
+          CREATE_ISSUE,
+          {
+            input: {
+              title,
+              description:
+                description || null,
+            },
+          },
+        );
+
+      setIssues(
+        (current) => [
+          ...current,
+          data.createIssue,
+        ],
+      );
+
+      setTitle("");
+      setDescription("");
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+
+  async function markDone(
+    issueId: number,
+  ) {
+    setError("");
+
+    try {
+      const data =
+        await graphqlRequest<
+          UpdateIssueResponse
+        >(
+          UPDATE_ISSUE,
+          {
+            id: issueId,
+
+            input: {
+              status: "DONE",
+            },
+          },
+        );
+
+      if (!data.updateIssue) {
+        return;
+      }
+
+      setIssues(
+        (current) =>
+          current.map(
+            (issue) =>
+              issue.id === issueId
+                ? {
+                    ...issue,
+                    status:
+                      data.updateIssue!
+                        .status,
+                  }
+                : issue,
+          ),
+      );
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error",
+      );
+    }
+  }
+
+
+  async function removeIssue(
+    issueId: number,
+  ) {
+    setError("");
+
+    try {
+      const data =
+        await graphqlRequest<
+          DeleteIssueResponse
+        >(
+          DELETE_ISSUE,
+          {
+            id: issueId,
+          },
+        );
+
+      if (!data.deleteIssue) {
+        return;
+      }
+
+      setIssues(
+        (current) =>
+          current.filter(
+            (issue) =>
+              issue.id !== issueId,
+          ),
+      );
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error",
+      );
+    }
+  }
+
+
+  function logout() {
+    localStorage.removeItem(
+      "accessToken",
+    );
+
+    router.replace(
+      "/login",
+    );
+  }
+
+
+  return (
+    <main
+      className="
+        mx-auto
+        min-h-screen
+        max-w-3xl
+        space-y-8
+        p-6
+      "
+    >
+      <header
+        className="
+          flex
+          items-center
+          justify-between
+        "
+      >
+        <div>
+          <h1
+            className="
+              text-3xl
+              font-bold
+            "
+          >
+            Issues
+          </h1>
+
+          <p
+            className="
+              text-sm
+              text-gray-500
+            "
+          >
+            GraphQL CRUD
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={logout}
+          className="
+            rounded
+            border
+            border-gray-300
+            px-3
+            py-2
+            text-sm
+          "
+        >
+          Logout
+        </button>
+      </header>
+
+      <form
+        onSubmit={
+          handleCreate
+        }
+        className="
+          space-y-3
+          rounded-lg
+          border
+          border-gray-200
+          p-4
+        "
+      >
+        <h2
+          className="
+            text-lg
+            font-semibold
+          "
+        >
+          Create Issue
+        </h2>
+
+        <input
+          value={title}
+          onChange={
+            (event) =>
+              setTitle(
+                event.target.value,
+              )
+          }
+          placeholder="Title"
+          className="
+            w-full
+            rounded
+            border
+            border-gray-300
+            px-3
+            py-2
+          "
+        />
+
+        <textarea
+          value={description}
+          onChange={
+            (event) =>
+              setDescription(
+                event.target.value,
+              )
+          }
+          placeholder="Description"
+          className="
+            min-h-24
+            w-full
+            rounded
+            border
+            border-gray-300
+            px-3
+            py-2
+          "
+        />
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="
+            rounded
+            bg-black
+            px-4
+            py-2
+            text-white
+            disabled:opacity-50
+          "
+        >
+          {
+            saving
+              ? "Creating..."
+              : "Create"
+          }
+        </button>
+      </form>
+
+      {error && (
+        <p
+          className="
+            rounded
+            bg-red-50
+            p-3
+            text-sm
+            text-red-700
+          "
+        >
+          {error}
+        </p>
+      )}
+
+      {loading ? (
+        <p>
+          Loading...
+        </p>
+      ) : (
+        <section
+          className="
+            space-y-3
+          "
+        >
+          {issues.length === 0 && (
+            <p
+              className="
+                text-gray-500
+              "
+            >
+              No issues.
+            </p>
+          )}
+
+          {issues.map(
+            (issue) => (
+              <article
+                key={issue.id}
+                className="
+                  rounded-lg
+                  border
+                  border-gray-200
+                  p-4
+                "
+              >
+                <div
+                  className="
+                    flex
+                    items-start
+                    justify-between
+                    gap-4
+                  "
+                >
+                  <div>
+                    <div
+                      className="
+                        flex
+                        items-center
+                        gap-2
+                      "
+                    >
+                      <h2
+                        className="
+                          font-semibold
+                        "
+                      >
+                        {issue.title}
+                      </h2>
+
+                      <span
+                        className="
+                          rounded
+                          bg-gray-100
+                          px-2
+                          py-1
+                          text-xs
+                        "
+                      >
+                        {issue.status}
+                      </span>
+                    </div>
+
+                    {issue.description && (
+                      <p
+                        className="
+                          mt-2
+                          text-sm
+                          text-gray-600
+                        "
+                      >
+                        {
+                          issue.description
+                        }
+                      </p>
+                    )}
+
+                    <p
+                      className="
+                        mt-2
+                        text-xs
+                        text-gray-400
+                      "
+                    >
+                      Owner:
+                      {" "}
+                      {issue.owner.name}
+                    </p>
+                  </div>
+
+                  <div
+                    className="
+                      flex
+                      shrink-0
+                      gap-2
+                    "
+                  >
+                    {issue.status !==
+                      "DONE" && (
+                      <button
+                        type="button"
+                        onClick={
+                          () =>
+                            void markDone(
+                              issue.id,
+                            )
+                        }
+                        className="
+                          rounded
+                          border
+                          border-gray-300
+                          px-3
+                          py-1
+                          text-sm
+                        "
+                      >
+                        Done
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={
+                        () =>
+                          void removeIssue(
+                            issue.id,
+                          )
+                      }
+                      className="
+                        rounded
+                        bg-red-600
+                        px-3
+                        py-1
+                        text-sm
+                        text-white
+                      "
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ),
+          )}
+        </section>
+      )}
+    </main>
+  );
+}
+```
+
+このStepではUI Libraryを追加せず、Tailwindだけで最低限の画面を作る。
+
+---
+
+## Step 14.8 — BrowserでCRUD確認
 
 Backend:
+
+```bash
+cd backend
+uv run uvicorn app.main:app --reload
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Browser:
+
+```text
+http://localhost:3000/login
+```
+
+### Login
+
+Login後、Chrome DevToolsで確認する。
+
+```text
+Application
+→ Local Storage
+→ http://localhost:3000
+→ accessToken
+```
+
+### Read
+
+`/issues`を開き、DBに保存されているIssueが画面に表示されることを確認する。
+
+### Create
+
+```text
+Title: Frontend CRUD
+Description: Next.jsから作成
+```
+
+Create後、画面に追加されることを確認する。
+
+DBでも確認する。
+
+```sql
+SELECT
+    id,
+    title,
+    status,
+    owner_id
+FROM issues
+ORDER BY id;
+```
+
+### Update
+
+`Done`を押してStatusが以下のように変わることを確認する。
+
+```text
+OPEN
+→ DONE
+```
+
+### Delete
+
+`Delete`後、Cardが画面から消え、DBからも削除されていることを確認する。
+
+### Logout
+
+```text
+localStorageからaccessToken削除
+→ /loginへ移動
+```
+
+---
+
+## Step 14.9 — Network TabでGraphQL確認
+
+Chrome DevTools:
+
+```text
+Network
+→ graphql
+```
+
+確認する内容:
+
+```text
+Request Headers
+Authorization: Bearer <JWT>
+
+Request Payload
+query
+variables
+
+Response
+data / errors
+```
+
+GraphiQLで実行していたQuery / MutationがBrowserからどのように送信されるかを確認する。
+
+---
+
+## Step 14.10 — Authentication Failure確認
+
+DevToolsから`accessToken`を削除して`/issues`へ移動する。
+
+```text
+Tokenなし
+→ /loginへRedirect
+```
+
+次に無効なTokenを保存してRequestする。
+
+```text
+accessToken = abc
+```
+
+```text
+無効Token
+→ Backend JWT検証失敗
+→ GraphQL Error
+→ Frontend Error表示
+```
+
+ここでFrontend側のRoute ControlとBackend側のAuthenticationは別の責務であることを確認する。
+
+---
+
+# Step 15 — Filter / Search / Cursor Pagination
+
+Backend Queryへ以下を追加する。
 
 ```text
 status
@@ -911,18 +2229,11 @@ cursor
 limit
 ```
 
-Frontend:
+Frontendにも簡単なFilter / Search UIを追加し、Network TabでGraphQL Variablesを確認する。
 
-```text
-Filter
-Search
-Next Cursor
-```
-
-大量Data最適化はPhase 2で深掘りする。
+大量DataでのPagination / Infinite Scroll / VirtualizationはPhase 2で深掘りする。
 
 ---
-
 # Step 17 — Backend Testing
 
 完成したBackend実装を対象にTestを追加する。
