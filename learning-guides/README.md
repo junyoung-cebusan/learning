@@ -1,6 +1,6 @@
 # 学習ガイド一覧
 
-基準となるRoadmap: [README.md](./README.md)
+基準となるRoadmap: [README.md](../README.md)
 
 1. [Phase 1 — Full-Stack Foundation](./PHASE_1_FULLSTACK_FOUNDATION.md)
 2. [Phase 2 — Scale & Large-Scale Data Processing](./PHASE_2_SCALE_DATA.md)
