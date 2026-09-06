@@ -350,26 +350,49 @@ OFFSETとの速度差を大量Dataで比較する。
 
 ---
 
-# Step 10 — TanStack Query
+# Step 10 — Apollo Client
 
-Install:
+Phase 2ではApollo ClientをMainのGraphQL Clientとして導入する。
 
-```bash
-npm install @tanstack/react-query
+```text
+Phase 1
+.graphql + Codegen + graphql-request
+
+Phase 2
+.graphql + Codegen + Apollo Client
 ```
 
-Provider作成。
+`.graphql` FileとCodegenで生成したDocumentはそのまま再利用する。
+
+## Install
+
+```bash
+yarn add \
+  @apollo/client \
+  graphql
+```
+
+## Apollo Client
 
 ```tsx
 "use client";
 
 import {
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
-import {
-  useState,
-} from "react";
+  ApolloClient,
+  ApolloProvider,
+  InMemoryCache,
+} from "@apollo/client";
+
+
+const client =
+  new ApolloClient({
+    uri:
+      process.env
+        .NEXT_PUBLIC_GRAPHQL_URL,
+
+    cache:
+      new InMemoryCache(),
+  });
 
 
 export function Providers({
@@ -377,31 +400,184 @@ export function Providers({
 }: {
   children: React.ReactNode;
 }) {
-  const [client] = useState(
-    () => new QueryClient()
-  );
-
   return (
-    <QueryClientProvider
+    <ApolloProvider
       client={client}
     >
       {children}
-    </QueryClientProvider>
+    </ApolloProvider>
   );
 }
 ```
 
-Query:
+## Query
 
 ```tsx
-const query = useQuery({
-  queryKey: [
-    "issues",
-    filter,
-  ],
-  queryFn: () =>
-    fetchIssues(filter),
+const {
+  data,
+  loading,
+  error,
+} = useQuery(
+  GetIssuesDocument,
+);
+```
+
+## Mutation
+
+```tsx
+const [
+  createIssue,
+] = useMutation(
+  CreateIssueDocument,
+);
+```
+
+---
+
+# Step 11 — Apollo Normalized Cache
+
+Apolloの重要な学習ポイントはNormalized Cache。
+
+```text
+Issue:1
+Issue:2
+User:1
+```
+
+同じEntityをQuery単位ではなくEntity単位で扱う。
+
+確認する。
+
+```text
+Issue Listを取得
+→ Issue Detailを取得
+→ updateIssueを実行
+→ 同じIssue Entityがどう更新されるか
+```
+
+Apollo DevToolsでCacheを確認する。
+
+---
+
+# Step 12 — Apollo Cursor Pagination
+
+Phase 2で作ったKeyset PaginationをApolloへ接続する。
+
+学習:
+
+```text
+typePolicies
+keyArgs
+merge
+fetchMore
+```
+
+例:
+
+```typescript
+new InMemoryCache({
+  typePolicies: {
+    Query: {
+      fields: {
+        issues: {
+          keyArgs: [
+            "status",
+            "search",
+          ],
+
+          merge(
+            existing = {
+              items: [],
+            },
+            incoming,
+          ) {
+            return {
+              ...incoming,
+              items: [
+                ...existing.items,
+                ...incoming.items,
+              ],
+            };
+          },
+        },
+      },
+    },
+  },
 });
+```
+
+---
+
+# Step 13 — Apollo Optimistic Update / Cache Policy
+
+Optimistic Updateを実装する。
+
+```tsx
+createIssue({
+  variables: {
+    input,
+  },
+  optimisticResponse: {
+    createIssue: {
+      __typename: "Issue",
+      id: -1,
+      title: input.title,
+      status: "OPEN",
+    },
+  },
+});
+```
+
+確認:
+
+```text
+Server Response前にUI更新
+→ Request失敗
+→ Rollback
+```
+
+さらに以下を比較する。
+
+```text
+cache-first
+cache-and-network
+network-only
+no-cache
+```
+
+---
+
+# Step 14 — graphql-request + TanStack Query 比較実習
+
+ApolloをMain実装として残し、同じIssue Listの一部だけを別BranchまたはComparison Componentで実装する。
+
+## Install
+
+```bash
+yarn add @tanstack/react-query
+```
+
+Phase 1の`graphql-request` Clientを再利用する。
+
+```tsx
+const query =
+  useQuery({
+    queryKey: [
+      "issues",
+      status,
+      search,
+    ],
+
+    queryFn: () =>
+      getGraphQLClient()
+        .request(
+          GetIssuesDocument,
+          {
+            status,
+            search,
+          },
+        ),
+  });
 ```
 
 Mutation後:
@@ -412,41 +588,510 @@ queryClient.invalidateQueries({
 });
 ```
 
----
+比較観点:
 
-# Step 11 — Infinite Query
+| Apollo Client | TanStack Query |
+|---|---|
+| GraphQL専用 | Protocol非依存 |
+| Normalized Cache | Query Key Cache |
+| Entity中心 | Query Result中心 |
+| GraphQL Cache機能が豊富 | REST / GraphQL両方で使える |
 
-```tsx
-useInfiniteQuery({
-  queryKey: ["issues"],
-  initialPageParam: null,
-  queryFn: ({ pageParam }) =>
-    fetchIssues({
-      cursor: pageParam,
-    }),
-  getNextPageParam: (
-    lastPage,
-  ) => lastPage.nextCursor,
-});
+同じ機能について以下を比較する。
+
+```text
+Pagination
+Optimistic Update
+Cache Update
+Invalidation
+Type Safety
+Boilerplate
+Debugしやすさ
 ```
 
+Main ApplicationではApolloを使い続ける。
+TanStack Query版は比較学習用とする。
+
 ---
 
-# Step 12 — Virtualization
 
-Install:
+# Step 15 — Apollo Client Testing
+
+Apollo ClientのTestでは、Apollo内部実装をTestするのではなく、
+**Query / Mutationの結果によってCacheとUIが期待通り変化するか**を確認する。
+
+## Test Tool
+
+Phase 1で導入したVitest / React Testing Libraryをそのまま使う。
 
 ```bash
-npm install @tanstack/react-virtual
+yarn add -D \
+  @testing-library/react \
+  @testing-library/jest-dom \
+  @testing-library/user-event \
+  vitest \
+  jsdom
 ```
-
-大量RowをDOMに全部描画せず、Viewport周辺だけRenderする。
-
-DevTools PerformanceでDOM数とRender Costを比較する。
 
 ---
 
-# Step 13 — Chunk Processing
+## Apollo Test Client
+
+`src/test/apollo-test-client.ts`
+
+```typescript
+import {
+  ApolloClient,
+  InMemoryCache,
+} from "@apollo/client";
+
+
+export function createTestApolloClient() {
+  return new ApolloClient({
+    cache: new InMemoryCache(),
+  });
+}
+```
+
+---
+
+## Normalized Cache Test
+
+同じ`Issue` Entityが複数Queryに存在しても、Mutation Responseで同じIDが返れば
+同じEntityとして更新されることを確認する。
+
+```typescript
+import {
+  describe,
+  expect,
+  test,
+} from "vitest";
+
+import {
+  InMemoryCache,
+} from "@apollo/client";
+
+
+describe(
+  "Apollo normalized cache",
+  () => {
+    test(
+      "updates the same issue entity",
+      () => {
+        const cache =
+          new InMemoryCache();
+
+        cache.writeFragment({
+          id: "Issue:1",
+          fragment: gql`
+            fragment TestIssue on Issue {
+              id
+              title
+              status
+            }
+          `,
+          data: {
+            __typename: "Issue",
+            id: 1,
+            title: "Before",
+            status: "OPEN",
+          },
+        });
+
+        cache.writeFragment({
+          id: "Issue:1",
+          fragment: gql`
+            fragment TestIssueUpdate on Issue {
+              id
+              title
+              status
+            }
+          `,
+          data: {
+            __typename: "Issue",
+            id: 1,
+            title: "After",
+            status: "DONE",
+          },
+        });
+
+        const result =
+          cache.readFragment({
+            id: "Issue:1",
+            fragment: gql`
+              fragment ReadIssue on Issue {
+                id
+                title
+                status
+              }
+            `,
+          });
+
+        expect(result).toMatchObject({
+          title: "After",
+          status: "DONE",
+        });
+      },
+    );
+  },
+);
+```
+
+> 実際のCodegen構成では、Test用Fragmentも`.graphql`へ分離してCodegen対象にしてよい。
+
+---
+
+## Pagination Merge Test
+
+`typePolicies.merge`をPure Functionとして切り出してTestする。
+
+```typescript
+export function mergeIssuePages(
+  existing = {
+    items: [],
+  },
+  incoming: {
+    items: unknown[];
+  },
+) {
+  return {
+    ...incoming,
+    items: [
+      ...existing.items,
+      ...incoming.items,
+    ],
+  };
+}
+```
+
+```typescript
+test(
+  "merges cursor pages",
+  () => {
+    const result =
+      mergeIssuePages(
+        {
+          items: [
+            { id: 1 },
+          ],
+        },
+        {
+          items: [
+            { id: 2 },
+          ],
+        },
+      );
+
+    expect(result.items).toEqual([
+      { id: 1 },
+      { id: 2 },
+    ]);
+  },
+);
+```
+
+確認Point:
+
+```text
+Page 1
+→ fetchMore
+→ Page 2
+→ 既存Itemsが消えない
+→ Duplicateが発生しない
+```
+
+---
+
+## Optimistic Update Test
+
+Component Testでは、Server Responseを待つ前にUIへ仮のIssueが表示されることを確認する。
+
+```tsx
+test(
+  "shows optimistic issue before server response",
+  async () => {
+    render(
+      <IssuePage />,
+      {
+        wrapper: ApolloTestProvider,
+      },
+    );
+
+    const user =
+      userEvent.setup();
+
+    await user.type(
+      screen.getByPlaceholderText(
+        "Title",
+      ),
+      "Optimistic Issue",
+    );
+
+    await user.click(
+      screen.getByRole(
+        "button",
+        {
+          name: "Create",
+        },
+      ),
+    );
+
+    expect(
+      screen.getByText(
+        "Optimistic Issue",
+      ),
+    ).toBeInTheDocument();
+  },
+);
+```
+
+追加で、Mutation Error時にOptimistic UIがRollbackされることも確認する。
+
+---
+
+# Step 16 — TanStack Query Comparison Testing
+
+TanStack Query版では、ApolloのNormalized Cacheとは違い、
+**Query Key / Invalidation / Query Result更新**をTestする。
+
+## Test QueryClient
+
+```typescript
+import {
+  QueryClient,
+} from "@tanstack/react-query";
+
+
+export function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+      mutations: {
+        retry: false,
+      },
+    },
+  });
+}
+```
+
+---
+
+## Query Key Test
+
+```typescript
+test(
+  "uses different cache entries for different filters",
+  () => {
+    const client =
+      createTestQueryClient();
+
+    client.setQueryData(
+      [
+        "issues",
+        { status: "OPEN" },
+      ],
+      ["open-issue"],
+    );
+
+    client.setQueryData(
+      [
+        "issues",
+        { status: "DONE" },
+      ],
+      ["done-issue"],
+    );
+
+    expect(
+      client.getQueryData([
+        "issues",
+        { status: "OPEN" },
+      ]),
+    ).toEqual([
+      "open-issue",
+    ]);
+  },
+);
+```
+
+---
+
+## Invalidation Test
+
+```typescript
+test(
+  "invalidates issue queries after mutation",
+  async () => {
+    const client =
+      createTestQueryClient();
+
+    client.setQueryData(
+      ["issues"],
+      [{ id: 1 }],
+    );
+
+    await client.invalidateQueries({
+      queryKey: ["issues"],
+    });
+
+    const state =
+      client.getQueryState([
+        "issues",
+      ]);
+
+    expect(
+      state?.isInvalidated,
+    ).toBe(true);
+  },
+);
+```
+
+---
+
+## Optimistic Update Test
+
+TanStack Queryでは`onMutate`でCacheを直接更新する。
+
+```typescript
+onMutate: async (
+  newIssue,
+) => {
+  await queryClient.cancelQueries({
+    queryKey: ["issues"],
+  });
+
+  const previous =
+    queryClient.getQueryData(
+      ["issues"],
+    );
+
+  queryClient.setQueryData(
+    ["issues"],
+    (old: Issue[] = []) => [
+      ...old,
+      newIssue,
+    ],
+  );
+
+  return {
+    previous,
+  };
+}
+```
+
+Error時:
+
+```typescript
+onError: (
+  _error,
+  _variables,
+  context,
+) => {
+  queryClient.setQueryData(
+    ["issues"],
+    context?.previous,
+  );
+}
+```
+
+Testでは:
+
+```text
+Mutation開始
+→ Cacheへ仮Data追加
+→ Error
+→ previous CacheへRollback
+```
+
+を確認する。
+
+---
+
+## Apollo vs TanStack Query Test観点
+
+| 観点 | Apollo | TanStack Query |
+|---|---|---|
+| Cache単位 | Entity | Query Key |
+| Update確認 | Entity自動反映 | setQueryData / invalidate |
+| Pagination | typePolicies / merge | useInfiniteQuery |
+| Optimistic | optimisticResponse | onMutate |
+| GraphQL理解 | あり | なし |
+
+同じIssue Listを両方でTestし、Cacheの考え方の違いを実際に確認する。
+
+---
+
+# Step 17 — Client Library E2E
+
+E2EではApolloやTanStack QueryそのものをTestしない。
+
+**Userから見た結果**だけを確認する。
+
+Playwright Scenario:
+
+```text
+Login
+→ Issue List
+→ Cursorで次Page取得
+→ Create
+→ Optimistic UI確認
+→ Update
+→ Filter変更
+→ Delete
+→ Logout
+```
+
+Example:
+
+```typescript
+test(
+  "issue list works with client cache",
+  async ({ page }) => {
+    await page.goto(
+      "/login",
+    );
+
+    await login(page);
+
+    await page.goto(
+      "/issues",
+    );
+
+    await page
+      .getByPlaceholder(
+        "Title",
+      )
+      .fill(
+        "Apollo E2E Issue",
+      );
+
+    await page
+      .getByRole(
+        "button",
+        {
+          name: "Create",
+        },
+      )
+      .click();
+
+    await expect(
+      page.getByText(
+        "Apollo E2E Issue",
+      ),
+    ).toBeVisible();
+  },
+);
+```
+
+Main ApplicationのE2EはApollo版で実行する。
+TanStack Query版はComparison Branchで必要な範囲のみ同じScenarioを再実行する。
+
+---
+
+# Step 18 — Large List / Virtualization
+
+# Step 19 — Chunk Processing
 
 ```python
 async def archive_issues():
@@ -485,7 +1130,7 @@ Memory使用量を観測する。
 
 ---
 
-# Step 14 — Redis Cache
+# Step 20 — Redis Cache
 
 Install:
 
@@ -550,7 +1195,7 @@ Update
 
 ---
 
-# Step 15 — Background Job
+# Step 21 — Background Job
 
 まず簡単なQueue Interfaceを作る。
 
@@ -574,7 +1219,7 @@ FrontendはPollingでJob Statusを確認する。
 
 ---
 
-# Step 16 — Kafka
+# Step 22 — Kafka
 
 Local:
 
@@ -607,7 +1252,7 @@ async for message in consumer:
 
 ---
 
-# Step 17 — Load Test
+# Step 20 — Load Test
 
 Toolはk6などを利用してよい。
 
@@ -628,6 +1273,20 @@ p99
 throughput
 error rate
 DB connection count
+```
+
+---
+
+# Phase 2 Testing Completion
+
+```text
+[ ] Apollo Normalized Cache Test
+[ ] Apollo Pagination Merge Test
+[ ] Apollo Optimistic Update / Rollback Test
+[ ] TanStack Query Query Key Test
+[ ] TanStack Query Invalidation Test
+[ ] TanStack Query Optimistic Rollback Test
+[ ] Playwright Pagination / CRUD E2E
 ```
 
 ---

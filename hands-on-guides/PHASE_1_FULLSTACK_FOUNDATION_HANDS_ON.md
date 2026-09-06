@@ -841,20 +841,19 @@ localStorage
 Project rootで実行する。
 
 ```bash
-npx create-next-app@latest frontend \
+yarn create next-app frontend \
   --typescript \
   --eslint \
   --tailwind \
   --app \
-  --src-dir \
-  --use-npm
+  --src-dir
 ```
 
 起動:
 
 ```bash
 cd frontend
-npm run dev
+yarn dev
 ```
 
 Browser:
@@ -925,36 +924,229 @@ NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8000/graphql
 Environment Variable追加後はDev Serverを再起動する。
 
 ```bash
-npm run dev
+yarn dev
 ```
 
 ---
 
-## Step 14.4 — GraphQL Request Helper
+## Step 14.4 — graphql-request + `.graphql` + GraphQL Code Generator
 
-`frontend/src/lib/graphql.ts`:
+FrontendではGraphQL OperationをComponent内のStringとして管理しない。
+
+```text
+.graphql File
+→ GraphQL Code Generator
+→ TypedDocumentNode
+→ graphql-request
+```
+
+という構成にする。
+
+### Install
+
+```bash
+yarn add \
+  graphql \
+  graphql-request
+
+yarn add -D \
+  @graphql-codegen/cli \
+  @graphql-codegen/typescript \
+  @graphql-codegen/typescript-operations \
+  @graphql-codegen/typed-document-node
+```
+
+### Structure
+
+```text
+frontend/
+├── codegen.ts
+└── src/
+    ├── app/
+    ├── graphql/
+    │   ├── login.graphql
+    │   ├── issues.graphql
+    │   ├── create-issue.graphql
+    │   ├── update-issue.graphql
+    │   └── delete-issue.graphql
+    ├── generated/
+    │   └── graphql.ts
+    └── lib/
+        └── graphql-client.ts
+```
+
+### GraphQL Documents
+
+`src/graphql/login.graphql`:
+
+```graphql
+mutation Login(
+  $input: LoginInput!
+) {
+  login(
+    input: $input
+  ) {
+    accessToken
+
+    user {
+      id
+      name
+      email
+    }
+  }
+}
+```
+
+`src/graphql/issues.graphql`:
+
+```graphql
+query GetIssues {
+  issues {
+    id
+    title
+    description
+    status
+
+    owner {
+      id
+      name
+      email
+    }
+  }
+}
+```
+
+`src/graphql/create-issue.graphql`:
+
+```graphql
+mutation CreateIssue(
+  $input: CreateIssueInput!
+) {
+  createIssue(
+    input: $input
+  ) {
+    id
+    title
+    description
+    status
+
+    owner {
+      id
+      name
+      email
+    }
+  }
+}
+```
+
+`src/graphql/update-issue.graphql`:
+
+```graphql
+mutation UpdateIssue(
+  $id: Int!
+  $input: UpdateIssueInput!
+) {
+  updateIssue(
+    id: $id
+    input: $input
+  ) {
+    id
+    title
+    description
+    status
+  }
+}
+```
+
+`src/graphql/delete-issue.graphql`:
+
+```graphql
+mutation DeleteIssue(
+  $id: Int!
+) {
+  deleteIssue(
+    id: $id
+  )
+}
+```
+
+### Codegen Config
+
+`frontend/codegen.ts`:
 
 ```typescript
-const GRAPHQL_URL =
-  process.env.NEXT_PUBLIC_GRAPHQL_URL
-  ?? "http://localhost:8000/graphql";
+import type {
+  CodegenConfig,
+} from "@graphql-codegen/cli";
 
 
-type GraphQLError = {
-  message: string;
-};
+const config:
+  CodegenConfig = {
+    schema:
+      "http://localhost:8000/graphql",
+
+    documents:
+      "src/graphql/**/*.graphql",
+
+    generates: {
+      "src/generated/graphql.ts": {
+        plugins: [
+          "typescript",
+          "typescript-operations",
+          "typed-document-node",
+        ],
+      },
+    },
+  };
 
 
-type GraphQLResponse<T> = {
-  data?: T;
-  errors?: GraphQLError[];
-};
+export default config;
+```
+
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "codegen": "graphql-codegen --config codegen.ts"
+  }
+}
+```
+
+Backendを起動した状態で実行する。
+
+```bash
+yarn codegen
+```
+
+生成例:
+
+```text
+LoginDocument
+LoginMutation
+LoginMutationVariables
+GetIssuesDocument
+CreateIssueDocument
+UpdateIssueDocument
+DeleteIssueDocument
+```
+
+### GraphQL Client
+
+`src/lib/graphql-client.ts`:
+
+```typescript
+import {
+  GraphQLClient,
+} from "graphql-request";
 
 
-export async function graphqlRequest<T>(
-  query: string,
-  variables?: Record<string, unknown>,
-): Promise<T> {
+const endpoint =
+  process.env
+    .NEXT_PUBLIC_GRAPHQL_URL!;
+
+
+export function getGraphQLClient() {
   const token =
     typeof window !== "undefined"
       ? localStorage.getItem(
@@ -962,75 +1154,24 @@ export async function graphqlRequest<T>(
         )
       : null;
 
-  const response = await fetch(
-    GRAPHQL_URL,
+  return new GraphQLClient(
+    endpoint,
     {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json",
-
-        ...(token
-          ? {
-              Authorization:
-                `Bearer ${token}`,
-            }
-          : {}),
-      },
-
-      body: JSON.stringify({
-        query,
-        variables,
-      }),
-
-      cache: "no-store",
+      headers: token
+        ? {
+            Authorization:
+              `Bearer ${token}`,
+          }
+        : {},
     },
   );
-
-  const result:
-    GraphQLResponse<T> =
-      await response.json();
-
-  if (result.errors?.length) {
-    throw new Error(
-      result.errors
-        .map(
-          (error) =>
-            error.message,
-        )
-        .join("
-"),
-    );
-  }
-
-  if (!result.data) {
-    throw new Error(
-      "GraphQL response has no data",
-    );
-  }
-
-  return result.data;
 }
 ```
 
-Requestの流れ:
-
-```text
-React Component
-  ↓
-graphqlRequest()
-  ↓
-POST /graphql
-  ↓
-Authorization: Bearer JWT
-  ↓
-FastAPI / Strawberry
-```
-
-GraphQL Client Libraryを入れなくても、GraphQLはHTTP Requestとして送信できることをここで確認する。
+この段階ではServer State Cacheはまだ追加しない。
+Phase 2でApollo Clientを導入し、GraphQL Cacheを本格的に学ぶ。
 
 ---
-
 ## Step 14.5 — Root Page
 
 `frontend/src/app/page.tsx`:
@@ -1142,40 +1283,12 @@ import {
 } from "next/navigation";
 
 import {
-  graphqlRequest,
-} from "@/lib/graphql";
+  LoginDocument,
+} from "@/generated/graphql";
 
-
-const LOGIN = `
-  mutation Login(
-    $input: LoginInput!
-  ) {
-    login(
-      input: $input
-    ) {
-      accessToken
-
-      user {
-        id
-        name
-        email
-      }
-    }
-  }
-`;
-
-
-type LoginResponse = {
-  login: {
-    accessToken: string;
-
-    user: {
-      id: number;
-      name: string;
-      email: string;
-    };
-  } | null;
-};
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
 
 
 export default function LoginPage() {
@@ -1211,9 +1324,12 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      const client =
+        getGraphQLClient();
+
       const data =
-        await graphqlRequest<LoginResponse>(
-          LOGIN,
+        await client.request(
+          LoginDocument,
           {
             input: {
               email,
@@ -1439,111 +1555,20 @@ import {
 } from "next/navigation";
 
 import {
-  graphqlRequest,
-} from "@/lib/graphql";
+  CreateIssueDocument,
+  DeleteIssueDocument,
+  GetIssuesDocument,
+  UpdateIssueDocument,
+  type GetIssuesQuery,
+} from "@/generated/graphql";
+
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
 
 
-type Issue = {
-  id: number;
-  title: string;
-  description: string | null;
-  status: string;
-
-  owner: {
-    id: number;
-    name: string;
-    email: string;
-  };
-};
-
-
-const GET_ISSUES = `
-  query GetIssues {
-    issues {
-      id
-      title
-      description
-      status
-
-      owner {
-        id
-        name
-        email
-      }
-    }
-  }
-`;
-
-
-const CREATE_ISSUE = `
-  mutation CreateIssue(
-    $input: CreateIssueInput!
-  ) {
-    createIssue(
-      input: $input
-    ) {
-      id
-      title
-      description
-      status
-
-      owner {
-        id
-        name
-        email
-      }
-    }
-  }
-`;
-
-
-const UPDATE_ISSUE = `
-  mutation UpdateIssue(
-    $id: Int!
-    $input: UpdateIssueInput!
-  ) {
-    updateIssue(
-      id: $id
-      input: $input
-    ) {
-      id
-      title
-      description
-      status
-    }
-  }
-`;
-
-
-const DELETE_ISSUE = `
-  mutation DeleteIssue(
-    $id: Int!
-  ) {
-    deleteIssue(
-      id: $id
-    )
-  }
-`;
-
-
-type IssuesResponse = {
-  issues: Issue[];
-};
-
-
-type CreateIssueResponse = {
-  createIssue: Issue;
-};
-
-
-type UpdateIssueResponse = {
-  updateIssue: Issue | null;
-};
-
-
-type DeleteIssueResponse = {
-  deleteIssue: boolean;
-};
+type Issue =
+  GetIssuesQuery["issues"][number];
 
 
 export default function IssuesPage() {
@@ -1586,11 +1611,12 @@ export default function IssuesPage() {
         setError("");
 
         try {
+          const client =
+            getGraphQLClient();
+
           const data =
-            await graphqlRequest<
-              IssuesResponse
-            >(
-              GET_ISSUES,
+            await client.request(
+              GetIssuesDocument,
             );
 
           setIssues(
@@ -1648,10 +1674,8 @@ export default function IssuesPage() {
 
     try {
       const data =
-        await graphqlRequest<
-          CreateIssueResponse
-        >(
-          CREATE_ISSUE,
+        await getGraphQLClient().request(
+          CreateIssueDocument,
           {
             input: {
               title,
@@ -1689,10 +1713,8 @@ export default function IssuesPage() {
 
     try {
       const data =
-        await graphqlRequest<
-          UpdateIssueResponse
-        >(
-          UPDATE_ISSUE,
+        await getGraphQLClient().request(
+          UpdateIssueDocument,
           {
             id: issueId,
 
@@ -1737,10 +1759,8 @@ export default function IssuesPage() {
 
     try {
       const data =
-        await graphqlRequest<
-          DeleteIssueResponse
-        >(
-          DELETE_ISSUE,
+        await getGraphQLClient().request(
+          DeleteIssueDocument,
           {
             id: issueId,
           },
@@ -2098,7 +2118,7 @@ Frontend:
 
 ```bash
 cd frontend
-npm run dev
+yarn dev
 ```
 
 Browser:
@@ -2325,7 +2345,7 @@ Test用Databaseは開発DBと分離する。
 Install:
 
 ```bash
-npm install -D \
+yarn add -D \
   vitest \
   jsdom \
   @testing-library/react \
@@ -2403,8 +2423,8 @@ test(
 Install:
 
 ```bash
-npm install -D @playwright/test
-npx playwright install
+yarn add -D @playwright/test
+yarn playwright install
 ```
 
 Scenario:
