@@ -332,7 +332,7 @@ class UpdateIssueInput:
 
 # Step 7 — Issue CRUD Service
 
-`src/app/services/issue_service.py`
+`src/app/services/issues/issue_service.py`
 
 ```python
 from sqlalchemy import select
@@ -739,7 +739,7 @@ class RegisterInput:
     password: str
 ```
 
-`src/app/services/user_service.py`:
+`src/app/services/auth/register.py`:
 
 ```python
 from passlib.context import CryptContext
@@ -796,7 +796,7 @@ async def register_user(
 Mutation:
 
 ```python
-from app import user_service
+from app.services.auth.register import register_user
 from app.graphql.schemas.user import (
     RegisterInput,
     User,
@@ -808,7 +808,7 @@ async def register(
     self,
     input: RegisterInput,
 ) -> User:
-    return await user_service.register_user(
+    return await register_user(
         input
     )
 ```
