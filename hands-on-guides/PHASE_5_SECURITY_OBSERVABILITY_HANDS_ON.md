@@ -118,7 +118,41 @@ GraphQL Mutationへ適用する。
 
 ---
 
-# Step 6 — Ownership Authorization
+# Step 6 — OAuth2 / OpenID Connect
+
+Password Loginだけでなく、External Identity Providerを使うFlowを学ぶ。
+
+```text
+Browser
+→ Authorization Endpoint
+→ Login / Consent
+→ Authorization Code
+→ Backend
+→ Token Endpoint
+→ ID Token / Access Token
+```
+
+確認すること:
+
+```text
+OAuth2
+→ AuthorizationのFramework
+
+OpenID Connect
+→ OAuth2上にIdentityを追加
+
+ID Token
+→ User Identity
+
+Access Token
+→ API Access
+```
+
+Phase 1の独自JWT Loginと比較し、どこを自前実装し、どこをIdentity Providerへ任せるか整理する。
+
+---
+
+# Step 7 — Ownership Authorization
 
 ```python
 if issue.owner_id != current_user.id:
@@ -137,7 +171,7 @@ Admin → policyに応じて成功
 
 ---
 
-# Step 7 — GraphQL Complexity
+# Step 8 — GraphQL Complexity
 
 深すぎるQueryを制限する。
 
@@ -150,7 +184,7 @@ Testで意図的にNested Queryを送る。
 
 ---
 
-# Step 8 — Timeout
+# Step 9 — Timeout
 
 外部HTTP Call:
 
@@ -167,7 +201,7 @@ async with httpx.AsyncClient(
 
 ---
 
-# Step 9 — Retry
+# Step 10 — Retry
 
 Retry対象:
 
@@ -188,7 +222,7 @@ Exponential Backoff + Jitterを実装する。
 
 ---
 
-# Step 10 — Circuit Breaker
+# Step 11 — Circuit Breaker
 
 State:
 
@@ -202,7 +236,7 @@ HALF_OPEN
 
 ---
 
-# Step 11 — Rate Limit
+# Step 12 — Rate Limit
 
 Redis:
 
@@ -221,7 +255,7 @@ N+1 → rejected
 
 ---
 
-# Step 12 — Structured Logging
+# Step 13 — Structured Logging
 
 ```python
 logger.info(
@@ -238,7 +272,7 @@ Password / Tokenは絶対にLogしない。
 
 ---
 
-# Step 13 — Correlation ID
+# Step 14 — Correlation ID
 
 Middleware:
 
@@ -270,7 +304,7 @@ Frontend → Backend → Workerまで同じIDを渡す。
 
 ---
 
-# Step 14 — Metrics
+# Step 15 — Metrics
 
 最低限:
 
@@ -287,7 +321,7 @@ Prometheus/OpenTelemetry系Toolを使ってよい。
 
 ---
 
-# Step 15 — Distributed Tracing
+# Step 16 — Distributed Tracing
 
 Trace:
 
@@ -304,7 +338,7 @@ Trace IDで1Requestを追跡する。
 
 ---
 
-# Step 16 — Dashboard
+# Step 17 — Dashboard
 
 Dashboard Panels:
 
@@ -319,7 +353,7 @@ Kafka lag
 
 ---
 
-# Step 17 — Alert
+# Step 18 — Alert
 
 Alert例:
 
@@ -333,7 +367,7 @@ CPUだけではなくUser Impactを見る。
 
 ---
 
-# Step 18 — SLI / SLO
+# Step 19 — SLI / SLO
 
 Example:
 
@@ -349,7 +383,7 @@ Error Budgetを計算する。
 
 ---
 
-# Step 19 — Frontend Error Boundary
+# Step 20 — Frontend Error Boundary
 
 ```tsx
 "use client";
@@ -379,7 +413,7 @@ export default function Error({
 
 ---
 
-# Step 20 — Failure Injection
+# Step 21 — Failure Injection
 
 順番に止める。
 
@@ -404,7 +438,7 @@ Recovery
 
 ---
 
-# Step 21 — Playwright Security E2E
+# Step 22 — Playwright Security E2E
 
 Scenario:
 
@@ -421,10 +455,57 @@ Login
 
 ---
 
+# Step 23 — Health / Readiness / Graceful Shutdown
+
+Processが起動していることと、Requestを受けられることを分けて確認する。
+
+```text
+/health
+→ Process alive
+
+/ready
+→ DB / required dependencyを含めてTrafficを受けられる
+```
+
+Shutdown時は新しいRequestを止め、処理中のRequest / Workerを終了してからConnectionを閉じる。
+
+```text
+SIGTERM
+→ readiness false
+→ new traffic stop
+→ in-flight request wait
+→ DB / Redis / gRPC connection close
+→ process exit
+```
+
+---
+
+# Step 24 — gRPC TLS / Service Authentication
+
+Phase 3では`insecure_channel`でTransportを学んだ。Production-like環境ではService間通信を保護する。
+
+確認すること:
+
+```text
+TLS
+→ 通信の暗号化 / Server Identity確認
+
+mTLS候補
+→ Client / Server双方のIdentity確認
+
+Service Credential
+→ 呼び出し元ServiceのAuthorization
+```
+
+証明書やCredentialをCodeへ埋め込まず、Secret管理とRotationも考える。
+
+---
+
 # Phase 5 Completion
 
 ```text
 [ ] HttpOnly Cookie
+[ ] OAuth2 / OIDC
 [ ] Refresh Token
 [ ] CSRF
 [ ] RBAC / Ownership
@@ -437,4 +518,6 @@ Login
 [ ] Dashboard / Alert
 [ ] SLI / SLO
 [ ] Failure Test
+[ ] Health / Readiness / Graceful Shutdown
+[ ] gRPC TLS / Service Authentication
 ```

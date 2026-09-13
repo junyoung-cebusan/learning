@@ -97,7 +97,7 @@ services:
       - redis
 
   postgres:
-    image: postgres:16
+    image: postgres:17
     environment:
       POSTGRES_DB: app
       POSTGRES_USER: app
@@ -241,6 +241,28 @@ Backup
 `REDIS_URL`をAWS Redisへ変更する。
 
 Cacheが落ちたときApplicationが完全停止しない設計も考える。
+
+---
+
+## Service Discovery
+
+Phase 3で分離したUser Profile Serviceを複数Instanceで動かす場合、Issue APIが固定IPへ依存しないようService Discoveryを使う。
+
+```text
+Issue API
+→ Service Discovery / DNS
+→ User Profile Service instances
+```
+
+確認すること:
+
+```text
+Service名で接続できる
+Instance入れ替え後も接続先を追従できる
+Health Checkで異常Instanceを外せる
+```
+
+Phase 6ではこの構成をgRPC Load Balancingの前提として利用する。
 
 ---
 

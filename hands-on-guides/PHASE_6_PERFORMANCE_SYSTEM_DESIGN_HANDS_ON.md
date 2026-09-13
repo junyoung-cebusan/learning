@@ -268,7 +268,35 @@ layout shift
 
 ---
 
-# Step 15 — Load Test
+# Step 15 — Lazy Loading / Performance Budget
+
+Frontend Performanceを「速くする」だけでなく、Regressionを防ぐ基準を決める。
+
+Lazy Loading候補:
+
+```text
+重いClient Component
+Chart / Editor
+初期表示に不要なDialog
+大きいThird-party Library
+```
+
+Next.jsのdynamic import等を使い、初期BundleとInteractionへの影響を比較する。
+
+Performance Budget例:
+
+```text
+Initial JS <= target KB
+p75 LCP <= 2.5s
+p75 INP <= 200ms
+CLS <= 0.1
+```
+
+Projectの実測値から現実的なBudgetを決め、Build / Lighthouse / RUM等でRegressionを検知する。
+
+---
+
+# Step 16 — Load Test
 
 Scenario:
 
@@ -290,7 +318,7 @@ error rate
 
 ---
 
-# Step 16 — Stress Test
+# Step 17 — Stress Test
 
 徐々に負荷を上げる。
 
@@ -305,7 +333,7 @@ error rate
 
 ---
 
-# Step 17 — Spike Test
+# Step 18 — Spike Test
 
 短時間だけ急増させる。
 
@@ -319,7 +347,7 @@ Recovery時間を見る。
 
 ---
 
-# Step 18 — Soak Test
+# Step 19 — Soak Test
 
 数十分〜数時間実行する。
 
@@ -334,7 +362,7 @@ cache growth
 
 ---
 
-# Step 19 — Bottleneck Analysis
+# Step 20 — Bottleneck Analysis
 
 Evidence:
 
@@ -354,7 +382,7 @@ Frontend Waterfall
 
 ---
 
-# Step 20 — Failure Design Matrix
+# Step 21 — Failure Design Matrix
 
 `docs/system-design/failure.md`
 
@@ -368,7 +396,7 @@ Frontend Waterfall
 
 ---
 
-# Step 21 — Final Design Document
+# Step 22 — Final Design Document
 
 `docs/system-design/issue-tracker.md`
 
@@ -394,7 +422,7 @@ Trade-offs
 
 ---
 
-# Step 22 — Design Review Questions
+# Step 23 — Design Review Questions
 
 自分で回答する。
 
@@ -413,7 +441,7 @@ Dataが100倍なら?
 
 ---
 
-# Step 23 — Additional System Design Practice
+# Step 24 — Additional System Design Practice
 
 同じTemplateを使って:
 
@@ -451,7 +479,7 @@ Analytics Pipeline
 
 ---
 
-# Step 24 — gRPCをSystem Designへ組み込む
+# Step 25 — gRPCをSystem Designへ組み込む
 
 Phase 3では:
 
@@ -479,7 +507,7 @@ Capacity
 
 ---
 
-# Step 25 — Deadline Budgetを設計する
+# Step 26 — Deadline Budgetを設計する
 
 Request全体のTimeoutが3秒の場合:
 
@@ -515,7 +543,7 @@ Cancellation
 
 ---
 
-# Step 26 — Retry / Backoff / Idempotency
+# Step 27 — Retry / Backoff / Idempotency
 
 Retryしてよい処理と、
 危険な処理を分ける。
@@ -555,7 +583,7 @@ Retryは「失敗したら全部再実行」ではない。
 
 ---
 
-# Step 27 — gRPC Load Balancing / Service Discovery
+# Step 28 — gRPC Load Balancing / Service Discovery
 
 User Serviceを複数Instanceにする。
 
@@ -584,7 +612,7 @@ Phase 4で学んだECS / ALB / Service Discoveryとの関係を考える。
 
 ---
 
-# Step 28 — Connection / Channel Lifecycle
+# Step 29 — Connection / Channel Lifecycle
 
 RequestごとにChannelを作る構造と、
 
@@ -610,7 +638,7 @@ Application Lifecycle単位へRefactorするDesignを考える。
 
 ---
 
-# Step 29 — gRPC Streaming Design
+# Step 30 — gRPC Streaming Design
 
 Streamingが本当に必要なUse Caseを設計する。
 
@@ -638,7 +666,7 @@ Browser向けとService-to-Service向けを混同しない。
 
 ---
 
-# Step 30 — Backpressure / Slow Consumer
+# Step 31 — Backpressure / Slow Consumer
 
 StreamingではProducerがConsumerより速い場合を考える。
 
@@ -662,7 +690,7 @@ Drop / Retry Policy
 
 ---
 
-# Step 31 — gRPC Observability
+# Step 32 — gRPC Observability
 
 Phase 5のObservabilityをgRPCへ適用する。
 
@@ -702,7 +730,7 @@ duration_ms
 
 ---
 
-# Step 32 — gRPC Load Test
+# Step 33 — gRPC Load Test
 
 Unary RPCをLoad Testする。
 
@@ -737,7 +765,7 @@ Large Message
 
 ---
 
-# Step 33 — REST / GraphQL / gRPC Benchmarkの読み方
+# Step 34 — REST / GraphQL / gRPC Benchmarkの読み方
 
 単純なHello World Benchmarkだけで
 Protocolを選ばない。
@@ -762,7 +790,7 @@ Application Benchmarkを分けて考える。
 
 ---
 
-# Step 34 — Failure Scenario
+# Step 35 — Failure Scenario
 
 以下を意図的に発生させる。
 
@@ -792,7 +820,7 @@ Circuit Breaker
 
 ---
 
-# Step 35 — gRPC System Design Review
+# Step 36 — gRPC System Design Review
 
 最終Design Documentへ追加する。
 

@@ -24,12 +24,12 @@ Resolver
 
 # Step 2 — Repository Interface
 
-`src/app/repositories/issue.py`
+`src/app/modules/issue/domain/repository.py`
 
 ```python
 from typing import Protocol
 
-from app.domain.issue import Issue
+from app.modules.issue.domain.issue import Issue
 
 
 class IssueRepository(Protocol):
@@ -50,7 +50,7 @@ class IssueRepository(Protocol):
 
 # Step 3 — Domain Model
 
-`src/app/domain/issue.py`
+`src/app/modules/issue/domain/issue.py`
 
 ```python
 from dataclasses import dataclass
@@ -74,6 +74,8 @@ ORM Modelと分離する。
 ---
 
 # Step 4 — SQLAlchemy Repository
+
+`src/app/modules/issue/infrastructure/repository.py`
 
 ```python
 class SQLAlchemyIssueRepository:
@@ -105,6 +107,8 @@ class SQLAlchemyIssueRepository:
 ---
 
 # Step 5 — Application Service
+
+`src/app/modules/issue/application/close_issue.py`
 
 ```python
 class CloseIssue:
@@ -139,6 +143,8 @@ class CloseIssue:
 ---
 
 # Step 6 — Fake Repository Unit Test
+
+`tests/modules/issue/test_close_issue.py`
 
 ```python
 class FakeIssueRepository:
@@ -228,9 +234,9 @@ Framework依存を外側へ追い出す。
 
 ---
 
-# Step 9 — Modular Monolith
+# Step 9 — Modular Monolith Boundaryを確認する
 
-Structure:
+Step 2からIssueだけを先に以下へ分離している。
 
 ```text
 app/
@@ -240,11 +246,23 @@ app/
       application/
       infrastructure/
       graphql/
-    auth/
-    activity/
 ```
 
-一気に移動せず、Issue Moduleから段階的に移す。
+既存の:
+
+```text
+graphql/schemas/
+services/auth.py
+services/issues.py
+```
+
+を一度に全部移動しない。
+
+まずIssueの新しいUse Caseだけを`modules/issue/`へ移し、既存CRUDとTestが動くことを確認する。
+Auth / ActivityはModule Boundaryが本当に必要になった時だけ段階的に移す。
+
+このStepの目的はFolderを増やすことではなく、
+**Issueという機能単位でDependency Directionを閉じられるか確認すること**。
 
 ---
 

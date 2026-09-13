@@ -367,7 +367,7 @@ Phase 2
 ## Install
 
 ```bash
-yarn add \
+npm install \
   @apollo/client \
   graphql
 ```
@@ -554,7 +554,7 @@ ApolloをMain実装として残し、同じIssue Listの一部だけを別Branch
 ## Install
 
 ```bash
-yarn add @tanstack/react-query
+npm install @tanstack/react-query
 ```
 
 Phase 1の`graphql-request` Clientを再利用する。
@@ -625,7 +625,7 @@ Apollo ClientのTestでは、Apollo内部実装をTestするのではなく、
 Phase 1で導入したVitest / React Testing Libraryをそのまま使う。
 
 ```bash
-yarn add -D \
+npm install -D \
   @testing-library/react \
   @testing-library/jest-dom \
   @testing-library/user-event \
@@ -1091,6 +1091,48 @@ TanStack Query版はComparison Branchで必要な範囲のみ同じScenarioを�
 
 # Step 18 — Large List / Virtualization
 
+大量Dataを取得できるようになっても、DOMへ全件RenderするとBrowser側がBottleneckになる。
+
+まず1,000件以上を表示して、Chrome DevToolsでRender時間とDOM Node数を確認する。
+
+その後、Virtualizationを導入して「見えている範囲だけRenderする」方式と比較する。
+
+確認すること:
+
+```text
+通常List
+→ 全ItemをDOMへRender
+
+Virtualized List
+→ Viewport周辺だけRender
+```
+
+Search Inputでは、入力ごとにRequestを送らないようDebounceも確認する。
+
+```typescript
+useEffect(() => {
+  const timer = setTimeout(() => {
+    setDebouncedSearch(search);
+  }, 300);
+
+  return () => {
+    clearTimeout(timer);
+  };
+}, [search]);
+```
+
+さらにSearch条件が短時間で変わった場合、古いRequestが新しい結果を上書きしないようCancellationを確認する。
+
+```text
+search = "gra" Request A
+→ search = "graphql" Request B
+→ Aが後から返っても最新画面を上書きしない
+```
+
+Apollo / Browser fetchのAbort方法を確認し、Network Tabで古いRequestがcancelされることを確認する。
+
+---
+
 # Step 19 — Chunk Processing
 
 ```python
@@ -1252,7 +1294,7 @@ async for message in consumer:
 
 ---
 
-# Step 20 — Load Test
+# Step 23 — Load Test
 
 Toolはk6などを利用してよい。
 
