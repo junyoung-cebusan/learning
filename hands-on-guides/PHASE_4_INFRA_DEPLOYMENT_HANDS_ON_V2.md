@@ -2,8 +2,21 @@
 
 ## Goal
 
-Issue TrackerをLocalからStaging/Production-like環境へDeployし、  
-CI/CDとRollbackまで実際に体験する。
+Phase 1で体験した`EC2 + RDS + 手動Docker Deploy`を出発点に、Issue TrackerをStaging/Production-like構成へ発展させる。  
+このPhaseではEC2への手動Deployを繰り返さず、ECR / ALB / ECS Fargate / Service Discovery / CI/CD / Terraform / Rollbackを実際に体験する。
+
+```text
+Phase 1
+EC2 + RDS + 手動Deploy
+
+        ↓
+
+Phase 4
+ECR + ALB + ECS Fargate
+    + RDS + ElastiCache
+    + Service Discovery
+    + CI/CD + Terraform
+```
 
 ---
 
@@ -180,6 +193,8 @@ NEXT_PUBLIC_GRAPHQL_URL
 
 # Step 6 — AWS Architecture
 
+Phase 1のEC2単体構成から、Container Service中心の構成へ変更する。
+
 Target:
 
 ```text
@@ -187,26 +202,53 @@ Internet
    ↓
 ALB
    ↓
-ECS Backend
-   ↓
+ECS Fargate Service
+   ├─ Backend Task A
+   └─ Backend Task B
+        ↓
 RDS PostgreSQL
-   ↓
+        ↓
 ElastiCache Redis
 ```
 
+Container Image:
+
+```text
+Docker Build
+   ↓
+ECR
+   ↓
+ECS Task Definition
+```
+
 FrontendはNext.jsのHosting方式を決める。
+このPhaseのBackend学習では、まずALB → ECS → RDSの経路を完成させる。
 
 ---
 
-# Step 7 — ECS
+# Step 7 — ECR / ECS
 
-Container ImageをRegistryへPush。
+Phase 1ではEC2上でImageを直接Buildしたが、このPhaseではImageをECRへ保存し、ECS Task Definitionから参照する。
+
+Flow:
 
 ```text
 docker build
-→ push
+→ ECR login
+→ docker push
 → ECS Task Definition
 → ECS Service
+→ ALB Target Group
+```
+
+最低限確認すること:
+
+```text
+1. ECRにImage Tagが存在する
+2. ECS TaskがRUNNINGになる
+3. ALB Health Checkがhealthyになる
+4. ALB経由で/graphqlへ接続できる
+5. Taskを入れ替えてもALB Endpointは変わらない
 ```
 
 Health Endpoint:
@@ -244,7 +286,7 @@ Cacheが落ちたときApplicationが完全停止しない設計も考える。
 
 ---
 
-## Service Discovery
+# Step 9.5 — Service Discovery
 
 Phase 3で分離したUser Profile Serviceを複数Instanceで動かす場合、Issue APIが固定IPへ依存しないようService Discoveryを使う。
 
@@ -356,7 +398,7 @@ main merge
 
 # Step 13 — Staging Playwright
 
-CI에서Staging URLへ接続する。
+CIからStaging URLへ接続する。
 
 ```typescript
 export default defineConfig({
@@ -416,9 +458,12 @@ query {
 [ ] Docker build
 [ ] Compose
 [ ] Alembic
-[ ] AWS ECS
+[ ] ECR Push
+[ ] ALB
+[ ] ECS Fargate
 [ ] RDS
 [ ] Redis
+[ ] Service Discovery
 [ ] Terraform
 [ ] CI
 [ ] CD

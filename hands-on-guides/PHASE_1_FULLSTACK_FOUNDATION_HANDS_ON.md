@@ -580,7 +580,7 @@ query {
 # 4段階拡張 — Backend Unit Test入門
 
 > 既存の1〜4段階の順序は変更しない。
-> Memory CRUDが完成した時点で、最も基本的なTestだけを追加する。
+> Memory CRUDが完成した時点で、最初の実行可能なUnit Testを追加する。
 
 ## Test Tool
 
@@ -588,44 +588,95 @@ query {
 uv add --dev pytest pytest-asyncio httpx
 ```
 
-Phase 1ではBackend Testを以下の役割に分ける。
+この段階ではまず`services/issues.py`だけを直接Testする。
+GraphQLやDBはまだTest対象に含めない。
+
+作成するFile:
 
 ```text
-pytest
-→ Unit / Integration Test
-
-pytest-asyncio
-→ async function Test
-
-httpx
-→ FastAPI / GraphQL HTTP Integration Test
+backend/
+└── tests/
+    └── test_issue_service.py
 ```
 
-## 最初のTest対象
-
-最初はDBより単純なMemory ServiceからTestする。
-
-```text
-create_issue()
-get_issues()
-get_issue()
-update_issue()
-delete_issue()
-```
-
-重要なのはFrameworkそのものをTestすることではなく、**自分たちのコードの振る舞いを検証すること**である。
-
-例:
+## `tests/test_issue_service.py`
 
 ```python
-def test_create_issue():
-    # arrange
-    # act
-    # assert
-    ...
+from datetime import (
+    datetime,
+    timezone,
+)
+
+from app.graphql.schemas.issue import (
+    CreateIssueInput,
+    Issue,
+    UpdateIssueInput,
+)
+from app.services import issues as issue_service
+
+
+def setup_function() -> None:
+    issue_service.issues.clear()
+    issue_service.issues.append(
+        Issue(
+            id=1,
+            title="GraphQL学習",
+            description="Resolver復習",
+            status="OPEN",
+            created_at=datetime.now(
+                timezone.utc,
+            ),
+        )
+    )
+
+
+def test_create_issue() -> None:
+    created = issue_service.create_issue(
+        CreateIssueInput(
+            title="pytest学習",
+            description="Unit Test",
+        )
+    )
+
+    assert created.id == 2
+    assert created.title == "pytest学習"
+    assert created.status == "OPEN"
+    assert len(issue_service.get_issues()) == 2
+
+
+def test_update_issue() -> None:
+    updated = issue_service.update_issue(
+        1,
+        UpdateIssueInput(
+            status="DONE",
+        ),
+    )
+
+    assert updated is not None
+    assert updated.status == "DONE"
+
+
+def test_delete_issue() -> None:
+    deleted = issue_service.delete_issue(1)
+
+    assert deleted is True
+    assert issue_service.get_issue(1) is None
 ```
 
-この段階ではTestの基本構造とArrange / Act / Assertの流れを理解する。
+実行:
+
+```bash
+cd backend
+uv run pytest tests/test_issue_service.py -q
+```
+
+期待結果:
+
+```text
+3 passed
+```
+
+ここではArrange / Act / Assertと、Frameworkを経由せずServiceの振る舞いを直接Testする感覚を確認する。
 
 ---
 
@@ -2203,21 +2254,125 @@ Headerなし        → Authentication失敗
 
 # 8段階拡張 — Authentication / GraphQL Integration Test
 
-JWTまで実装した後は、Service単位のTestから一段階進み、実際のGraphQL Requestを検証する。
+JWTまで実装した後は、実際のGraphQL HTTP Requestを1本通して確認する。
 
-## 確認するScenario
+このTestでは次の層をまとめて通す。
 
 ```text
-Register
-→ Login
-→ JWT発行
-→ Authorization Header
-→ createIssue
-→ current_user
-→ owner_id保存
+HTTP
+→ FastAPI
+→ Strawberry GraphQL
+→ Context
+→ Service
+→ PostgreSQL
 ```
 
-最低限、以下のCaseをTestする。
+## Test用Database
+
+普段の開発DBとTestデータを混ぜないため、Test用DBを作成する。
+
+```bash
+docker exec -it <postgres-container-name> \
+  createdb -U app app_test
+```
+
+`database.py`の`DATABASE_URL`は環境変数から読めるようにしておく。
+
+```python
+import os
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://app:password@localhost:5432/app",
+)
+```
+
+Test実行時だけ:
+
+```bash
+export DATABASE_URL="postgresql+asyncpg://app:password@localhost:5432/app_test"
+```
+
+## `tests/test_graphql_auth.py`
+
+```python
+import pytest
+
+from httpx import (
+    ASGITransport,
+    AsyncClient,
+)
+
+from app.main import app
+
+
+@pytest.mark.asyncio
+async def test_register_duplicate_email() -> None:
+    transport = ASGITransport(
+        app=app,
+    )
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        mutation = """
+        mutation Register($input: RegisterInput!) {
+          register(input: $input) {
+            accessToken
+            user {
+              id
+              email
+            }
+          }
+        }
+        """
+
+        variables = {
+            "input": {
+                "name": "test",
+                "email": "phase1@example.com",
+                "password": "password123",
+            }
+        }
+
+        first = await client.post(
+            "/graphql",
+            json={
+                "query": mutation,
+                "variables": variables,
+            },
+        )
+
+        assert first.status_code == 200
+        assert first.json()["data"]["register"]["accessToken"]
+
+        second = await client.post(
+            "/graphql",
+            json={
+                "query": mutation,
+                "variables": variables,
+            },
+        )
+
+        body = second.json()
+
+        assert second.status_code == 200
+        assert body["data"] is None
+        assert body["errors"][0]["message"] == (
+            "Email already registered"
+        )
+```
+
+Test前に`app_test`のschemaを作成済みにしてから実行する。
+
+```bash
+cd backend
+DATABASE_URL="postgresql+asyncpg://app:password@localhost:5432/app_test" \
+  uv run pytest tests/test_graphql_auth.py -q
+```
+
+最低限、次のCaseへ増やせることも確認する。
 
 ```text
 1. 正常な会員登録
@@ -2230,20 +2385,7 @@ Register
 8. 存在しないUserのToken処理
 ```
 
-## Test Level
-
-```text
-Unit Test
-Service単体のLogic
-
-Integration Test
-GraphQL + Context + Service + Database接続
-
-E2E
-Frontendまで含む実際のUser Flow
-```
-
-この段階では特に、**Unit TestとIntegration Testの違い**を区別して理解する。
+この段階では全Caseを大量に書くことより、Unit TestとIntegration Testの境界を実際に1回通して理解することを優先する。
 
 ---
 
@@ -3585,7 +3727,10 @@ const IssuesPage = () => {
           },
         );
 
-      if (!data.updateIssue) {
+      const updatedIssue =
+        data.updateIssue;
+
+      if (!updatedIssue) {
         return;
       }
 
@@ -3597,8 +3742,7 @@ const IssuesPage = () => {
                 ? {
                     ...issue,
                     status:
-                      data.updateIssue!
-                        .status,
+                      updatedIssue.status,
                   }
                 : issue,
           ),
@@ -4101,37 +4245,206 @@ accessToken = abc
 
 ---
 
-# 10段階 — Filter / Search / Cursor Pagination
+# Step 14拡張 — Frontend Testing
 
-## Service query
+Frontendでも「Tool名だけ知る」で終わらせず、最低1本ずつ実行する。
 
-```python
-stmt = (
-    select(IssueModel)
-    .where(
-        IssueModel.owner_id
-        == owner_id
-    )
-)
+## Vitest + React Testing Library
 
-if status is not None:
-    stmt = stmt.where(
-        IssueModel.status
-        == status
-    )
+Install:
 
-if search:
-    stmt = stmt.where(
-        IssueModel.title.ilike(
-            f"%{search}%"
-        )
-    )
+```bash
+cd frontend
+npm install -D vitest jsdom @testing-library/react @testing-library/jest-dom
 ```
 
-## Cursor
+`package.json`へ追加:
+
+```json
+{
+  "scripts": {
+    "test": "vitest run"
+  }
+}
+```
+
+`frontend/vitest.config.ts`:
+
+```ts
+import {
+  defineConfig,
+} from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "jsdom",
+    setupFiles: [
+      "./vitest.setup.ts",
+    ],
+  },
+});
+```
+
+`frontend/vitest.setup.ts`:
+
+```ts
+import "@testing-library/jest-dom/vitest";
+```
+
+最初のTestは外部APIを必要としないRoot Pageにする。
+
+`frontend/src/app/page.test.tsx`:
+
+```tsx
+import {
+  render,
+  screen,
+} from "@testing-library/react";
+import {
+  describe,
+  expect,
+  it,
+} from "vitest";
+
+import Home from "./page";
+
+
+describe("Home", () => {
+  it("shows navigation links", () => {
+    render(<Home />);
+
+    expect(
+      screen.getByRole(
+        "link",
+        { name: "Login" },
+      ),
+    ).toHaveAttribute(
+      "href",
+      "/login",
+    );
+
+    expect(
+      screen.getByRole(
+        "link",
+        { name: "Register" },
+      ),
+    ).toHaveAttribute(
+      "href",
+      "/register",
+    );
+  });
+});
+```
+
+実行:
+
+```bash
+cd frontend
+npm run test
+```
+
+## Playwright
+
+Install:
+
+```bash
+cd frontend
+npm install -D @playwright/test
+npx playwright install chromium
+```
+
+`frontend/playwright.config.ts`:
+
+```ts
+import {
+  defineConfig,
+} from "@playwright/test";
+
+export default defineConfig({
+  use: {
+    baseURL: "http://localhost:3000",
+  },
+});
+```
+
+`frontend/e2e/navigation.spec.ts`:
+
+```ts
+import {
+  expect,
+  test,
+} from "@playwright/test";
+
+
+test("register pageへ移動できる", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await page.getByRole(
+    "link",
+    { name: "Register" },
+  ).click();
+
+  await expect(page).toHaveURL(
+    /\/register$/,
+  );
+});
+```
+
+Frontendを起動した状態で実行:
+
+```bash
+cd frontend
+npm run dev
+```
+
+別Terminal:
+
+```bash
+cd frontend
+npx playwright test
+```
+
+Phase 1ではE2Eを大量に書かない。Login / Register / Issue CRUDのうち、本当に重要なUser FlowだけをPlaywrightで確認する。
+
+---
+
+# 10段階 — Filter / Search / Cursor Pagination
+
+この段階では、どのFileを変更するかを最初に固定する。
+
+```text
+Backend
+src/app/graphql/schemas/issue.py
+src/app/graphql/query.py
+src/app/services/issues.py
+
+Frontend
+frontend/src/graphql/issues.graphql
+frontend/src/app/issues/page.tsx
+
+Generated
+frontend/src/generated/graphql.ts
+```
+
+## `graphql/schemas/issue.py` — Pagination Response
+
+```python
+@strawberry.type
+class IssueConnection:
+    items: list[Issue]
+    next_cursor: str | None
+```
+
+## `services/issues.py` — Filter / Search / Cursor
+
+Cursor helperもPhase 1ではこのFileに置く。
 
 ```python
 import base64
+
+from sqlalchemy import select
 
 
 def encode_cursor(
@@ -4151,112 +4464,208 @@ def decode_cursor(
         cursor.encode(),
     ).decode()
 
-    _, issue_id = raw.split(
-        ":"
-    )
+    _, issue_id = raw.split(":")
 
-    return int(
-        issue_id
-    )
+    return int(issue_id)
 ```
 
-Cursor SQLの概念:
+既存のIssue一覧Queryへ条件を追加する。
 
-```sql
-SELECT *
-FROM issues
-WHERE owner_id = 1
-AND id > 100
-ORDER BY id
-LIMIT 20;
+```python
+stmt = (
+    select(IssueModel)
+    .where(
+        IssueModel.owner_id
+        == owner_id
+    )
+    .order_by(IssueModel.id)
+)
+
+if status is not None:
+    stmt = stmt.where(
+        IssueModel.status
+        == status
+    )
+
+if search:
+    stmt = stmt.where(
+        IssueModel.title.ilike(
+            f"%{search}%"
+        )
+    )
+
+if after is not None:
+    stmt = stmt.where(
+        IssueModel.id
+        > decode_cursor(after)
+    )
+
+stmt = stmt.limit(first + 1)
+```
+
+`first + 1`件取得し、次Pageが存在するか判定する。
+
+```python
+rows = list(
+    (await session.scalars(stmt)).all()
+)
+
+has_next = len(rows) > first
+items = rows[:first]
+
+next_cursor = (
+    encode_cursor(items[-1].id)
+    if has_next and items
+    else None
+)
+```
+
+最終的に`IssueConnection`を返す。
+
+## `graphql/query.py` — GraphQL Arguments
+
+```python
+@strawberry.field
+async def issues(
+    self,
+    info: strawberry.Info,
+    status: str | None = None,
+    search: str | None = None,
+    after: str | None = None,
+    first: int = 20,
+) -> IssueConnection:
+    current_user = (
+        info.context.current_user
+    )
+
+    if current_user is None:
+        raise ValueError(
+            "Authentication required"
+        )
+
+    return await issue_service.get_issues(
+        owner_id=current_user.id,
+        status=status,
+        search=search,
+        after=after,
+        first=first,
+    )
 ```
 
 ## GraphiQL確認
-
-Filter:
 
 ```graphql
 query {
   issues(
     status: "OPEN"
+    search: "GraphQL"
+    first: 20
   ) {
-    id
-    title
-    status
+    items {
+      id
+      title
+      status
+    }
+    nextCursor
   }
 }
 ```
 
-Search:
+返された`nextCursor`を次のRequestへ渡す。
 
 ```graphql
 query {
   issues(
-    search: "GraphQL"
+    after: "取得したcursor"
+    first: 20
   ) {
-    id
-    title
+    items {
+      id
+      title
+    }
+    nextCursor
   }
 }
 ```
 
-Update後にfilterを再確認:
+## `frontend/src/graphql/issues.graphql`
 
 ```graphql
-mutation {
-  updateIssue(
-    id: 1
-    input: {
-      status: "DONE"
-    }
+query GetIssues(
+  $status: String
+  $search: String
+  $after: String
+  $first: Int
+) {
+  issues(
+    status: $status
+    search: $search
+    after: $after
+    first: $first
   ) {
-    id
-    status
+    items {
+      id
+      title
+      description
+      status
+    }
+    nextCursor
   }
 }
 ```
 
----
+Document変更後はCodegenを再実行する。
 
+```bash
+cd frontend
+npm run codegen
+```
 
+`frontend/src/generated/graphql.ts`は直接編集しない。
 
-## FrontendでFilter / Searchを接続
+## `frontend/src/app/issues/page.tsx`
 
-10段階のbackend queryが動作したら、同じ条件をbrowser UIにも接続する。
-
-最小UI:
+UIとして最低限追加する。
 
 ```text
 Status Select
 Search Input
-Load More
+Load More Button
 ```
 
-動作Flow:
+Request variables:
+
+```tsx
+const data = await client.request(
+  GetIssuesDocument,
+  {
+    status:
+      status || null,
+    search:
+      search || null,
+    after,
+    first: 20,
+  },
+);
+```
+
+Filter/Search条件が変わったときは`after`を`null`へ戻して先頭から取得する。
+
+Load Moreでは現在の`nextCursor`を`after`へ渡し、返ってきた`items`を既存配列の後ろへ追加する。
+
+Search inputは入力のたびに即時Requestせず、短いdebounceを適用する。
+
+この段階で確認すること:
 
 ```text
-status / search 変更
-  ↓
-GraphQL variables 変更
-  ↓
-issues Queryを再Request
-  ↓
-結果一覧を更新
+1. statusがGraphQL variablesとして渡される
+2. searchがDB queryへ反映される
+3. nextCursorがnullになるまで次Pageを取得できる
+4. Load Moreで既存Issueが重複しない
+5. Filter/Search変更時にpaginationが先頭へ戻る
 ```
 
-Search inputは入力のたびに即時Requestせず、短いdebounceを適用して不要なrequestを減らすことを確認する。
-
-Cursor paginationはoffset page numberではなく、最後に受け取ったcursorを次のrequestの`after`値として渡す方式を使用する。
-
-この段階ではpagination libraryを追加せず、次の3点を直接確認する。
-
-```text
-1. Filter条件がGraphQL variablesとして渡されるか
-2. Search結果がDB queryと一致するか
-3. 次cursorを使用したとき、重複なく次のdataが続くか
-```
-
-Phase 2ではこのFlowをApollo Clientのcache / pagination policyへ接続する。
+Phase 2ではこのFlowをApollo Clientのcache / pagination policyへ移行する。
 
 ---
 
@@ -4334,57 +4743,169 @@ jobs:
 
 ---
 
-# 12段階 — AWS Deployment方針
+# 12段階 — AWS Deployment入門
 
-学習用の基本architecture:
+Phase 1ではAWS全体を構築しない。
+Localで動いているBackendを一度AWSへ移し、Network / Compute / Databaseの関係を体験することを目的にする。
+
+Phase 4でECS / ALB / ECR / Terraform / Rollbackへ進むため、ここでは次だけを行う。
 
 ```text
-Internet
-   ↓
-ALB
-   ↓
-ECS Fargate
-   ↓
-FastAPI
-   ↓
-RDS PostgreSQL
+Local Browser
+  ↓
+EC2
+  └─ FastAPI Docker
+       ↓
+      RDS PostgreSQL
 ```
 
-Container:
+## Free Tier / Costの前提
+
+2026年のAWS新規Accountでは、Free Planを最大6か月利用でき、Signup時の$100 Creditと、Activityによる追加最大$100 Creditが用意されている。
+ただし、Account条件・Region・Resourceによって対象や消費量は変わるため、作成前後にBilling / Free Tier画面を必ず確認する。
+
+「Free TierだからResourceを残したままでよい」とは考えない。
+Hands-on終了後は不要Resourceを削除する。
+
+## 12.1 — EC2作成
+
+AWS Consoleで小さいLinux Instanceを1台作成する。
+
+確認する項目:
 
 ```text
-Docker Image
-   ↓
+Region
+Instance Type
+Key Pair
+Security Group
+Public IPv4
+```
+
+Security Groupでは学習用に必要なPortだけを開ける。
+
+```text
+22   SSH
+8000 FastAPI確認用
+```
+
+SSH接続:
+
+```bash
+ssh -i <key-file> \
+  <user>@<ec2-public-ip>
+```
+
+## 12.2 — EC2へDockerをInstall
+
+Amazon Linux系の場合の例:
+
+```bash
+sudo dnf update -y
+sudo dnf install -y docker
+sudo systemctl enable docker
+sudo systemctl start docker
+```
+
+確認:
+
+```bash
+docker --version
+```
+
+## 12.3 — Backend ImageをEC2で起動
+
+Phase 11で作成したBackend Dockerfileを使う。
+
+ProjectをEC2へ配置した後:
+
+```bash
+docker build \
+  -t issue-backend \
+  ./backend
+```
+
+RDS接続前はContainer buildが成功することまで確認する。
+
+## 12.4 — RDS PostgreSQL作成
+
+RDSでPostgreSQLを作成する。
+
+確認する項目:
+
+```text
+PostgreSQL
+小さいInstance Class
+Private accessを基本とする
+DB名: app
+User: app
+Backup / Storage設定
+```
+
+RDS側Security Groupは、Internet全体ではなくEC2のSecurity GroupからPostgreSQL `5432`へ接続できるようにする。
+
+```text
+EC2 Security Group
+      ↓ 5432
+RDS Security Group
+```
+
+## 12.5 — EC2からRDS疎通確認
+
+RDS Endpointを使ってBackendの`DATABASE_URL`を設定する。
+
+```bash
+export DATABASE_URL="postgresql+asyncpg://app:<password>@<rds-endpoint>:5432/app"
+```
+
+Container起動:
+
+```bash
+docker run \
+  --rm \
+  -p 8000:8000 \
+  -e DATABASE_URL="$DATABASE_URL" \
+  issue-backend
+```
+
+Local PCから確認:
+
+```bash
+curl \
+  http://<ec2-public-ip>:8000/graphql
+```
+
+GraphiQLまたはFrontendからRegister / Login / Issue CRUDがRDSへ保存されることを確認する。
+
+## 12.6 — Hands-on終了後にResource削除
+
+学習が終わったら必ず確認する。
+
+```text
+[ ] EC2 Instanceを終了
+[ ] RDS Instanceを削除
+[ ] 不要Snapshotを削除
+[ ] 不要Security Group / Volumeを確認
+[ ] Billing / Cost Managementを確認
+```
+
+Phase 1ではここまででよい。
+
+Phase 4ではこの構成を次へ発展させる。
+
+```text
+EC2手動Deploy
+  ↓
 ECR
-   ↓
-ECS
-```
-
-CI/CD:
-
-```text
-GitHub Actions
-   ↓
-Test
-   ↓
-Docker Build
-   ↓
-ECR Push
-   ↓
-ECS Deploy
-```
-
-次 Senior 段階:
-
-```text
-Redis / ElastiCache
-Kafka / Queue
+  ↓
+ALB
+  ↓
+ECS / Fargate
+  ↓
+RDS / ElastiCache
+  ↓
+CI/CD
+  ↓
 Terraform
-Observability
-Large-scale Data Processing
-OAuth/OIDC
-Rate Limiting
-System Design
 ```
 
 ---
