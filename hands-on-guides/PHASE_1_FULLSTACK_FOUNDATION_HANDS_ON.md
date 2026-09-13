@@ -1,14 +1,14 @@
-# GraphQL 풀스택 1~12단계 실습 가이드 — Async 검증판
+# GraphQL Full-Stack 1〜12段階ハンズオンガイド — Async検証版
 
-> 목표: `src/app/graphql`, `src/app/graphql/schemas`, `models`, `services` 구조를 유지하면서 직접 타이핑해보며  
-> FastAPI → Strawberry GraphQL → SQLAlchemy Async → PostgreSQL → DataLoader → JWT → Next.js → Docker → AWS 흐름을 익힌다.
+> 目標: `src/app/graphql`, `src/app/graphql/schemas`, `models`, `services` 構成を維持しながら実際に手を動かして入力し  
+> FastAPI → Strawberry GraphQL → SQLAlchemy Async → PostgreSQL → DataLoader → JWT → Next.js → Docker → AWS 流れを身につける。
 >
-> **중요:** 5단계에서 PostgreSQL을 붙이는 순간부터 12단계까지 SQLAlchemy는 **Async 전용**으로 사용한다.
-> Sync `Session` 코드와 `AsyncSession` 코드를 섞지 않는다.
+> **重要:** 5段階でPostgreSQLを接続した時点から 12段階までSQLAlchemyは**Async専用**で使用する。
+> Sync `Session`のコードと`AsyncSession`のコードを混在させない。
 
 ---
 
-# 최종 구조
+# 最終構成
 
 ```text
 fullstack-relearn/
@@ -45,7 +45,7 @@ fullstack-relearn/
         └── ci.yml
 ```
 
-레이어:
+レイヤー:
 
 ```text
 graphql/  → Query / Mutation Resolver
@@ -54,7 +54,7 @@ services/ → Business Logic / DB Access
 models/   → SQLAlchemy ORM Model
 ```
 
-최종 요청 흐름:
+最終Request Flow:
 
 ```text
 Browser
@@ -74,11 +74,11 @@ PostgreSQL
 
 ---
 
-# 0. 프로젝트 설정
+# 0. Project Setup
 
 ## `pyproject.toml`
 
-프로젝트 이름은 `backend`, 실제 import package는 `app`으로 사용한다.
+Project名は`backend`、実際のimport packageは`app`として使用する。
 
 ```toml
 [project]
@@ -95,7 +95,7 @@ module-name = "app"
 module-root = "src"
 ```
 
-설치:
+インストール:
 
 ```bash
 uv add fastapi uvicorn
@@ -104,7 +104,7 @@ uv add "sqlalchemy[asyncio]"
 uv add asyncpg
 ```
 
-실행:
+実行:
 
 ```bash
 uv run uvicorn app.main:app --reload
@@ -112,7 +112,7 @@ uv run uvicorn app.main:app --reload
 
 ---
 
-# 1단계 — FastAPI
+# 1段階 — FastAPI
 
 ## `src/app/main.py`
 
@@ -130,13 +130,13 @@ def health():
     }
 ```
 
-실행:
+実行:
 
 ```bash
 uv run uvicorn app.main:app --reload
 ```
 
-확인:
+確認:
 
 ```text
 http://localhost:8000/health
@@ -144,7 +144,7 @@ http://localhost:8000/health
 
 ---
 
-# 2단계 — Strawberry GraphQL
+# 2段階 — Strawberry GraphQL
 
 ## `graphql/query.py`
 
@@ -161,7 +161,7 @@ class Query:
 
 ## `graphql/mutation.py`
 
-아직 실제 Mutation이 없으므로 확인용 `ping`을 둔다.
+まだ実際のMutationはないため、確認用の`ping`を用意する。
 
 ```python
 import strawberry
@@ -203,7 +203,7 @@ app.include_router(
 )
 ```
 
-## GraphiQL 확인
+## GraphiQL確認
 
 ```text
 http://localhost:8000/graphql
@@ -227,9 +227,9 @@ mutation {
 
 ---
 
-# 3단계 — Issue Query
+# 3段階 — Issue Query
 
-DB는 아직 붙이지 않는다.
+まだDBは接続しない。
 
 ## `graphql/schemas/issue.py`
 
@@ -261,7 +261,7 @@ class UpdateIssueInput:
     status: str | None = None
 ```
 
-> `status` 오타에 주의한다. `statue`가 아니다.
+> `status`のタイプミスに注意する。`statue`ではない。
 
 ## `services/issues.py`
 
@@ -277,8 +277,8 @@ from app.graphql.schemas.issue import Issue
 issues: list[Issue] = [
     Issue(
         id=1,
-        title="GraphQL 공부",
-        description="Resolver 복습",
+        title="GraphQL学習",
+        description="Resolver復習",
         status="OPEN",
         created_at=datetime.now(
             timezone.utc,
@@ -328,7 +328,7 @@ class Query:
         )
 ```
 
-## GraphiQL 확인 — Read
+## GraphiQL確認 — Read
 
 Read List:
 
@@ -370,9 +370,9 @@ query {
 
 ---
 
-# 4단계 — Mutation / Memory CRUD
+# 4段階 — Mutation / Memory CRUD
 
-이 단계까지는 DB가 없으므로 sync 함수로 충분하다.
+この段階まではDBがないため、sync関数で十分である。
 
 ## `services/issues.py`
 
@@ -493,7 +493,7 @@ class Mutation:
         )
 ```
 
-## GraphiQL 확인 — Memory CRUD
+## GraphiQL確認 — Memory CRUD
 
 ### Create
 
@@ -502,7 +502,7 @@ mutation {
   createIssue(
     input: {
       title: "Memory CRUD"
-      description: "Create 확인"
+      description: "Create確認"
     }
   ) {
     id
@@ -545,7 +545,7 @@ mutation {
   updateIssue(
     id: 2
     input: {
-      title: "Memory CRUD 수정"
+      title: "Memory CRUD更新"
       status: "DONE"
     }
   ) {
@@ -564,7 +564,7 @@ mutation {
 }
 ```
 
-### Delete 확인
+### Delete確認
 
 ```graphql
 query {
@@ -595,7 +595,7 @@ pytest
 → Unit / Integration Test
 
 pytest-asyncio
-→ async function 테스트
+→ async function Test
 
 httpx
 → FastAPI / GraphQL HTTP Integration Test
@@ -615,7 +615,7 @@ delete_issue()
 
 重要なのはFrameworkそのものをTestすることではなく、**自分たちのコードの振る舞いを検証すること**である。
 
-예:
+例:
 
 ```python
 def test_create_issue():
@@ -629,13 +629,13 @@ def test_create_issue():
 
 ---
 
-# 5단계 — PostgreSQL + SQLAlchemy Async
+# 5段階 — PostgreSQL + SQLAlchemy Async
 
-> **이 단계부터 끝까지 Async SQLAlchemy만 사용한다.**
+> **この段階から最後までAsync SQLAlchemyのみを使用する。**
 
 ## PostgreSQL
 
-root의 `docker-compose.yml`:
+rootの`docker-compose.yml`:
 
 ```yaml
 services:
@@ -654,7 +654,7 @@ volumes:
   postgres_data:
 ```
 
-실행:
+実行:
 
 ```bash
 docker compose up -d
@@ -692,7 +692,7 @@ SessionLocal = async_sessionmaker(
 )
 ```
 
-## AsyncSession 규칙
+## AsyncSessionルール
 
 ```python
 session.add(model)            # await X
@@ -705,25 +705,25 @@ await session.delete(model)   # await O
 await session.rollback()      # await O
 ```
 
-잘못된 코드:
+誤ったコード:
 
 ```python
 await session.add(model)
 ```
 
-잘못된 코드:
+誤ったコード:
 
 ```python
 await await session.commit()
 ```
 
-잘못된 코드:
+誤ったコード:
 
 ```python
 with SessionLocal() as session:
 ```
 
-정상:
+正しいコード:
 
 ```python
 async with SessionLocal() as session:
@@ -733,7 +733,7 @@ async with SessionLocal() as session:
 
 ## `models/issue.py`
 
-7단계 전까지는 `owner_id`를 만들지 않는다.
+7段階までは`owner_id`を作成しない。
 
 ```python
 from datetime import datetime
@@ -852,7 +852,7 @@ app.include_router(
 )
 ```
 
-## `services/issues.py` — Async CRUD로 교체
+## `services/issues.py` — Async CRUDへ置き換え
 
 ```python
 from sqlalchemy import select
@@ -978,7 +978,7 @@ async def delete_issue(
         return True
 ```
 
-## `graphql/query.py` — 전부 async
+## `graphql/query.py` — すべてasync
 
 ```python
 import strawberry
@@ -1005,7 +1005,7 @@ class Query:
         )
 ```
 
-## `graphql/mutation.py` — 전부 async
+## `graphql/mutation.py` — すべてasync
 
 ```python
 import strawberry
@@ -1050,9 +1050,9 @@ class Mutation:
         )
 ```
 
-> DB 단계 이후 `create_issue`, `update_issue`, `delete_issue` Resolver는 모두 `async def`다.
+> DB段階以降、`create_issue`、`update_issue`、`delete_issue` Resolverはすべて`async def`とする。
 
-## GraphiQL 확인 — PostgreSQL CRUD
+## GraphiQL確認 — PostgreSQL CRUD
 
 Create:
 
@@ -1061,7 +1061,7 @@ mutation {
   createIssue(
     input: {
       title: "PostgreSQL CRUD"
-      description: "INSERT 확인"
+      description: "INSERT確認"
     }
   ) {
     id
@@ -1106,7 +1106,7 @@ mutation {
   updateIssue(
     id: 1
     input: {
-      title: "PostgreSQL CRUD 수정"
+      title: "PostgreSQL CRUD更新"
       status: "DONE"
     }
   ) {
@@ -1127,16 +1127,16 @@ mutation {
 
 ---
 
-# 6단계 — SQL / Index / Transaction
+# 6段階 — SQL / Index / Transaction
 
-DB 접속:
+DB接続:
 
 ```bash
 docker compose exec postgres \
   psql -U app -d app
 ```
 
-조회:
+Query:
 
 ```sql
 SELECT *
@@ -1153,7 +1153,7 @@ ON issues (
 );
 ```
 
-실행 계획:
+実行計画:
 
 ```sql
 EXPLAIN ANALYZE
@@ -1175,7 +1175,7 @@ WHERE id = 1;
 ROLLBACK;
 ```
 
-다시:
+もう一度:
 
 ```sql
 BEGIN;
@@ -1187,12 +1187,12 @@ WHERE id = 1;
 COMMIT;
 ```
 
-## SQLAlchemy transaction 예
+## SQLAlchemy transaction例
 
 ```python
 async with SessionLocal() as session:
     try:
-        # 여러 DB 작업
+        # 複数のDB処理
         await session.commit()
 
     except Exception:
@@ -1200,7 +1200,7 @@ async with SessionLocal() as session:
         raise
 ```
 
-## GraphiQL 확인 — CRUD + SQL Log
+## GraphiQL確認 — CRUD + SQL Log
 
 Create:
 
@@ -1208,8 +1208,8 @@ Create:
 mutation {
   createIssue(
     input: {
-      title: "SQL 관찰용 Issue"
-      description: "INSERT 로그 확인"
+      title: "SQL確認用Issue"
+      description: "INSERT Log確認"
     }
   ) {
     id
@@ -1255,7 +1255,7 @@ mutation {
 }
 ```
 
-로그:
+Log:
 
 ```text
 Create → INSERT
@@ -1266,17 +1266,17 @@ Delete → DELETE
 
 ---
 
-# 7단계 — User 관계 / N+1 / DataLoader
+# 7段階 — User Relation / N+1 / DataLoader
 
-관계:
+Relation:
 
 ```text
 User 1 ─── N Issue
 ```
 
-이 단계에서 처음 `owner_id`를 추가한다.
+この段階で初めて`owner_id`を追加する。
 
-학습 중이라 migration 대신 DB 초기화가 가능하다.
+学習中のため、migrationの代わりにDBを初期化してもよい。
 
 ```bash
 docker compose down -v
@@ -1323,14 +1323,14 @@ class UserModel(Base):
 
 ## `models/issue.py`
 
-추가:
+追加:
 
 ```python
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import relationship
 ```
 
-클래스 내부:
+Class内部:
 
 ```python
 owner_id: Mapped[int] = mapped_column(
@@ -1373,7 +1373,7 @@ class User:
 
 ## `graphql/schemas/issue.py`
 
-> `owner()`는 **반드시 `Issue` 클래스 내부에 들여쓰기해서 정의한다.**
+> `owner()`は**必ず`Issue` Class内部にインデントして定義する。**
 
 ```python
 from datetime import datetime
@@ -1432,7 +1432,7 @@ class UpdateIssueInput:
     status: str | None = None
 ```
 
-## `to_issue()` 수정
+## `to_issue()`変更
 
 ```python
 def to_issue(
@@ -1529,9 +1529,9 @@ graphql_app = GraphQLRouter(
 )
 ```
 
-## JWT 전 임시 User seed
+## JWT導入前の一時User seed
 
-`owner_id`가 `NOT NULL`이므로 먼저 User가 필요하다.
+`owner_id`が`NOT NULL`のため、先にUserが必要である。
 
 ```sql
 INSERT INTO users (
@@ -1544,16 +1544,16 @@ VALUES (
 );
 ```
 
-확인:
+確認:
 
 ```sql
 SELECT *
 FROM users;
 ```
 
-user id가 `1`이라고 가정한다.
+user idを`1`と仮定する。
 
-JWT 전까지만 `create_issue()`에서 임시 owner id를 넣는다.
+JWT導入前だけ`create_issue()`に一時的なowner idを設定する。
 
 ```python
 model = IssueModel(
@@ -1564,9 +1564,9 @@ model = IssueModel(
 )
 ```
 
-> 8단계에서는 이 하드코딩을 제거하고 `current_user.id`를 사용한다.
+> 8段階ではこのハードコードを削除し、`current_user.id`を使用する。
 
-## GraphiQL 확인 — Relation / DataLoader
+## GraphiQL確認 — Relation / DataLoader
 
 Create:
 
@@ -1605,18 +1605,18 @@ query {
 }
 ```
 
-목표 SQL:
+目標SQL:
 
 ```text
-issues SELECT 1번
-users SELECT ... WHERE id IN (...) 1번
+issues SELECT 1回
+users SELECT ... WHERE id IN (...) 1回
 ```
 
 ---
 
-# 8단계 — JWT Authentication / Authorization
+# 8段階 — JWT Authentication / Authorization
 
-설치:
+インストール:
 
 ```bash
 uv add pyjwt "pwdlib[argon2]"
@@ -1624,7 +1624,7 @@ uv add pyjwt "pwdlib[argon2]"
 
 ## `models/user.py`
 
-추가:
+追加:
 
 ```python
 password_hash: Mapped[str] = mapped_column(
@@ -1633,7 +1633,7 @@ password_hash: Mapped[str] = mapped_column(
 )
 ```
 
-학습 중이면 DB를 다시 초기화한다.
+学習中であればDBを再初期化する。
 
 ## `security.py`
 
@@ -1841,7 +1841,7 @@ async def login(
         )
 ```
 
-## `graphql/context.py` — JWT 적용
+## `graphql/context.py` — JWT適用
 
 ```python
 from app.security import decode_access_token
@@ -1885,7 +1885,7 @@ async def get_context(
     return context
 ```
 
-## `services/issues.py` — owner 기반 CRUD
+## `services/issues.py` — ownerベースCRUD
 
 Create:
 
@@ -1974,7 +1974,7 @@ async def delete_issue(
         return True
 ```
 
-## `graphql/mutation.py` — 인증 CRUD
+## `graphql/mutation.py` — 認証CRUD
 
 ```python
 import strawberry
@@ -2078,11 +2078,11 @@ class Mutation:
 
 ## Logout
 
-현재는 access-token-only stateless JWT이므로 서버 Mutation이 필수는 아니다.
+現在はaccess-token-onlyのstateless JWTなので、Server Mutationは必須ではない。
 
 ```text
 Logout
-→ Client에서 access token 삭제
+→ Clientでaccess tokenを削除
 ```
 
 Next.js:
@@ -2093,9 +2093,9 @@ localStorage.removeItem(
 );
 ```
 
-Refresh Token / Redis session을 추가하는 Senior 단계에서는 서버-side revoke/logout을 다룬다.
+Refresh Token / Redis sessionを追加するSenior段階ではserver-side revoke/logoutを扱う。
 
-## GraphiQL 확인 — JWT CRUD
+## GraphiQL確認 — JWT CRUD
 
 Register:
 
@@ -2190,12 +2190,12 @@ mutation {
 }
 ```
 
-실패 케이스:
+失敗ケース:
 
 ```text
-Header 없음        → Authentication 실패
-잘못된 JWT         → Authentication 실패
-다른 User의 Issue  → Authorization 실패
+Headerなし        → Authentication失敗
+不正なJWT         → Authentication失敗
+他UserのIssue  → Authorization失敗
 ```
 
 ---
@@ -2210,51 +2210,51 @@ JWTまで実装した後は、Service単位のTestから一段階進み、実際
 ```text
 Register
 → Login
-→ JWT 발급
+→ JWT発行
 → Authorization Header
 → createIssue
 → current_user
-→ owner_id 저장
+→ owner_id保存
 ```
 
 最低限、以下のCaseをTestする。
 
 ```text
-1. 정상 회원가입
-2. 중복 email 회원가입 거부
-3. 정상 로그인
-4. 잘못된 비밀번호
-5. Token 없이 인증 Mutation 호출
-6. 정상 Token으로 Issue 생성
-7. 생성된 Issue의 owner 확인
-8. 존재하지 않는 User의 Token 처리
+1. 正常な会員登録
+2. 重複emailの会員登録を拒否
+3. 正常Login
+4. 不正なpassword
+5. Tokenなしで認証Mutationを呼び出す
+6. 正常TokenでIssueを作成
+7. 作成したIssueのownerを確認
+8. 存在しないUserのToken処理
 ```
 
 ## Test Level
 
 ```text
 Unit Test
-Service 하나의 로직
+Service単体のLogic
 
 Integration Test
-GraphQL + Context + Service + Database 연결
+GraphQL + Context + Service + Database接続
 
 E2E
-Frontend까지 포함한 실제 사용자 흐름
+Frontendまで含む実際のUser Flow
 ```
 
 この段階では特に、**Unit TestとIntegration Testの違い**を区別して理解する。
 
 ---
 
-# 9단계 — Next.js + Tailwind로 실제 CRUD 화면 만들기
+# 9段階 — Next.js + Tailwindで実際のCRUD画面を作る
 
-> 목표: GraphiQL에서 확인하던 JWT 로그인과 Issue CRUD를 이번에는 **브라우저 화면에서 직접 확인**한다.
+> 目標: GraphiQLで確認していたJWT LoginとIssue CRUDを、今回は**Browser画面で直接確認**する。
 >
-> 이 단계에서는 학습 범위를 불필요하게 넓히지 않기 위해 Apollo Client, urql, React Query, Zustand,
-> React Hook Form 같은 라이브러리를 추가하지 않는다.
+> この段階では学習範囲を不必要に広げないため Apollo Client, urql, React Query, Zustand,
+> React Hook Form などのLibraryは追加しない。
 >
-> 사용하는 것은:
+> 使用するもの:
 >
 > ```text
 > Next.js App Router
@@ -2264,13 +2264,13 @@ Frontend까지 포함한 실제 사용자 흐름
 > localStorage
 > ```
 >
-> 뿐이다.
+> のみとする。
 
 ---
 
-## 9-1. Next.js 프로젝트 생성
+## 9-1. Next.js Project作成
 
-프로젝트 root에서:
+Project rootで:
 
 ```bash
 npx create-next-app@latest frontend \
@@ -2282,22 +2282,22 @@ npx create-next-app@latest frontend \
   --use-npm
 ```
 
-현재 `create-next-app`은 TypeScript, Tailwind CSS, App Router를 공식적으로 지원한다.
+現在の`create-next-app`はTypeScript、Tailwind CSS、App Routerを正式にサポートしている。
 
-생성 후:
+作成後:
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-확인:
+確認:
 
 ```text
 http://localhost:3000
 ```
 
-이번 단계의 frontend 구조:
+この段階のfrontend構成:
 
 ```text
 frontend/
@@ -2320,19 +2320,19 @@ frontend/
 
 ## 9-2. Backend CORS
 
-브라우저의 Next.js application은:
+BrowserのNext.js applicationは:
 
 ```text
 http://localhost:3000
 ```
 
-Backend는:
+Backendは:
 
 ```text
 http://localhost:8000
 ```
 
-이므로 개발 환경에서는 CORS 허용이 필요하다.
+そのため開発環境ではCORS許可が必要である。
 
 Backend `src/app/main.py`:
 
@@ -2342,7 +2342,7 @@ from fastapi.middleware.cors import (
 )
 ```
 
-`app = FastAPI(...)` 생성 후:
+`app = FastAPI(...)` 作成後:
 
 ```python
 app.add_middleware(
@@ -2356,11 +2356,11 @@ app.add_middleware(
 )
 ```
 
-개발 단계에서는 이렇게 사용하지만 production에서는 허용 origin을 실제 frontend domain으로 제한한다.
+開発段階ではこの設定を使用するが、productionでは許可するoriginを実際のfrontend domainに制限する。
 
 ---
 
-## 9-3. GraphQL URL 환경변수
+## 9-3. GraphQL URL 環境変数
 
 `frontend/.env.local`:
 
@@ -2368,9 +2368,9 @@ app.add_middleware(
 NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8000/graphql
 ```
 
-`NEXT_PUBLIC_` prefix가 붙은 환경변수는 browser/client 코드에서도 사용할 수 있다.
+`NEXT_PUBLIC_` prefixが付いた環境変数はbrowser/client codeからも利用できる。
 
-환경변수를 추가한 뒤에는 dev server를 재시작한다.
+環境変数を追加した後はdev serverを再起動する。
 
 ```bash
 npm run dev
@@ -2378,7 +2378,7 @@ npm run dev
 
 ---
 
-## 9-4. 최소 GraphQL Request Helper
+## 9-4. 最小GraphQL Request Helper
 
 `src/lib/graphql.ts`:
 
@@ -2461,7 +2461,7 @@ export async function graphqlRequest<T>(
 }
 ```
 
-흐름:
+Flow:
 
 ```text
 React Component
@@ -2475,11 +2475,11 @@ Authorization: Bearer JWT
 FastAPI / Strawberry
 ```
 
-별도 GraphQL client library 없이도 GraphQL은 결국 HTTP POST 요청이므로 충분히 실습할 수 있다.
+別途GraphQL client libraryを使わなくても、GraphQLは最終的にHTTP POST requestなので十分に実習できる。
 
 ---
 
-## 9-5. Root 페이지
+## 9-5. Root Page
 
 `src/app/page.tsx`:
 
@@ -2559,17 +2559,17 @@ export default function Home() {
 }
 ```
 
-여기서는 routing만 확인한다.
+ここではroutingのみ確認する。
 
 ---
 
 
 
-# 9-5A. Register 화면
+# 9-5A. Register画面
 
-Backend에는 이미 `RegisterInput`, `services/auth.py`의 `register()`, GraphQL `register` Mutation이 있으므로 새로운 backend 구조를 만들지 않는다.
+Backendにはすでに`RegisterInput`、`services/auth.py`の`register()`、GraphQL `register` Mutationがあるため、新しいbackend構成は作らない。
 
-이번에는 browser에서 실제 회원가입 흐름을 연결한다.
+今回はbrowserで実際の会員登録Flowを接続する。
 
 ```text
 /register
@@ -2580,9 +2580,9 @@ register Mutation
   ↓
 AuthPayload
   ↓
-accessToken 저장
+accessToken保存
   ↓
-/issues 이동
+/issuesへ移動
 ```
 
 `src/app/register/page.tsx`:
@@ -2743,7 +2743,7 @@ export default function RegisterPage() {
 }
 ```
 
-Root page에는 기존 `Login`, `Issues` Link를 유지하고 `Register` Link만 추가한다.
+Root pageでは既存の`Login`、`Issues` Linkを維持し、`Register` Linkのみ追加する。
 
 ```tsx
 <Link
@@ -2754,27 +2754,27 @@ Root page에는 기존 `Login`, `Issues` Link를 유지하고 `Register` Link만
 </Link>
 ```
 
-중복 email로 다시 가입하면 backend의 `Email already registered` 오류가 GraphQL error로 전달되고 화면의 error message로 확인되어야 한다.
+同じemailで再登録すると、backendの`Email already registered`エラーがGraphQL errorとして返り、画面のerror messageで確認できる必要がある。
 
 ---
 
-# 9-6. Login 화면
+# 9-6. Login画面
 
-이 화면에서는:
+この画面では:
 
 ```text
-email/password 입력
+email/password入力
   ↓
 login Mutation
   ↓
-accessToken 응답
+accessToken応答
   ↓
-localStorage 저장
+localStorage保存
   ↓
-/issues 이동
+/issuesへ移動
 ```
 
-을 확인한다.
+を確認する。
 
 `src/app/login/page.tsx`:
 
@@ -3049,25 +3049,25 @@ export default function LoginPage() {
 
 ---
 
-# 9-7. Issue CRUD 화면
+# 9-7. Issue CRUD画面
 
-하나의 화면에서 CRUD를 모두 확인한다.
+1つの画面でCRUDをすべて確認する。
 
 ```text
 READ
-Issue 목록
+Issue一覧
 
 CREATE
-새 Issue form
+新規Issue form
 
 UPDATE
-DONE 버튼
+DONE Button
 
 DELETE
-Delete 버튼
+Delete Button
 ```
 
-복잡한 state library는 쓰지 않고 React `useState`만 사용한다.
+複雑なstate libraryは使わず、React `useState`のみを使用する。
 
 `src/app/issues/page.tsx`:
 
@@ -3730,9 +3730,9 @@ export default function IssuesPage() {
 
 ---
 
-# 9-8. 실제로 확인할 CRUD 흐름
+# 9-8. 実際に確認するCRUD Flow
 
-Backend와 frontend를 둘 다 실행한다.
+Backendとfrontendを両方起動する。
 
 Backend:
 
@@ -3752,7 +3752,7 @@ cd frontend
 npm run dev
 ```
 
-브라우저:
+Browser:
 
 ```text
 http://localhost:3000/login
@@ -3760,13 +3760,13 @@ http://localhost:3000/login
 
 ## 0. Register
 
-먼저 browser에서 직접 User를 등록한다.
+まずbrowserから直接Userを登録する。
 
 ```text
 http://localhost:3000/register
 ```
 
-예:
+例:
 
 ```text
 Name: Hwang
@@ -3774,33 +3774,33 @@ Email: hwang@example.com
 Password: password123
 ```
 
-성공하면 `accessToken`이 저장되고 `/issues`로 이동해야 한다.
+成功すると`accessToken`が保存され、`/issues`へ移動する必要がある。
 
-같은 email로 다시 등록해서 중복 email 오류도 확인한다.
+同じemailでもう一度登録し、重複emailエラーも確認する。
 
 ---
 
 ## 1. Login
 
-방금 등록한 사용자로 로그인한다.
+先ほど登録したUserでLoginする。
 
-예:
+例:
 
 ```text
 hwang@example.com
 password123
 ```
 
-성공하면:
+成功すると:
 
 ```text
 localStorage
 └── accessToken
 ```
 
-이 저장되고 `/issues`로 이동해야 한다.
+が保存され、`/issues`へ移動する必要がある。
 
-Browser DevTools에서도 확인한다.
+Browser DevToolsでも確認する。
 
 ```text
 Application
@@ -3813,7 +3813,7 @@ Application
 
 ## 2. Read
 
-`/issues` 진입 시:
+`/issues`へ遷移した時:
 
 ```graphql
 query GetIssues {
@@ -3831,29 +3831,29 @@ query GetIssues {
 }
 ```
 
-가 호출된다.
+が呼び出される。
 
-화면에 DB의 Issue 목록이 나타나는지 확인한다.
+画面にDBのIssue一覧が表示されるか確認する。
 
 ---
 
 ## 3. Create
 
-Create Issue form에:
+Create Issue formに:
 
 ```text
 Title:
 Frontend CRUD
 
 Description:
-Next.js에서 생성
+Next.jsから作成
 ```
 
-입력하고 Create를 누른다.
+入力してCreateを押す。
 
-화면에 바로 새 Issue가 추가되어야 한다.
+画面にすぐ新しいIssueが追加される必要がある。
 
-PostgreSQL에서도 확인한다.
+PostgreSQLでも確認する。
 
 ```sql
 SELECT
@@ -3869,13 +3869,13 @@ ORDER BY id;
 
 ## 4. Update
 
-생성한 Issue의:
+作成したIssueの:
 
 ```text
 Done
 ```
 
-버튼을 누른다.
+Buttonを押す。
 
 GraphQL:
 
@@ -3905,20 +3905,20 @@ variables:
 }
 ```
 
-화면의 status가:
+画面のstatusが:
 
 ```text
 OPEN
 → DONE
 ```
 
-으로 바뀌어야 한다.
+へ変わる必要がある。
 
 ---
 
 ## 5. Delete
 
-Delete를 누르면:
+Deleteを押すと:
 
 ```graphql
 mutation DeleteIssue(
@@ -3930,9 +3930,9 @@ mutation DeleteIssue(
 }
 ```
 
-가 실행된다.
+が実行される。
 
-성공하면 해당 card가 화면에서 사라져야 한다.
+成功すると対象cardが画面から消える必要がある。
 
 ---
 
@@ -3946,20 +3946,20 @@ localStorage.removeItem(
 );
 ```
 
-그리고:
+そして:
 
 ```text
 /issues
 → /login
 ```
 
-으로 이동한다.
+へ移動する。
 
-현재 단계의 JWT는 access-token-only이므로 이것이 logout이다.
+現在段階のJWTはaccess-token-onlyなので、これがlogoutとなる。
 
 ---
 
-# 9-9. Browser Network에서 GraphQL 확인
+# 9-9. Browser NetworkでGraphQL確認
 
 Chrome DevTools:
 
@@ -3968,7 +3968,7 @@ Network
 → graphql
 ```
 
-요청을 확인한다.
+Requestを確認する。
 
 Request Headers:
 
@@ -4003,54 +4003,54 @@ Response:
 }
 ```
 
-GraphiQL에서 보던 GraphQL 요청이 실제 browser HTTP request로 어떻게 전송되는지 확인하는 것이 중요하다.
+GraphiQLで確認していたGraphQL requestが実際のbrowser HTTP requestとしてどう送信されるか確認することが重要である。
 
 ---
 
-# 9-10. 인증 실패도 화면에서 확인
+# 9-10. 認証失敗も画面で確認
 
-DevTools → Application → Local Storage에서:
+DevTools → Application → Local Storageで:
 
 ```text
 accessToken
 ```
 
-을 삭제하고 `/issues`를 새로고침한다.
+を削除して`/issues`をReloadする。
 
-현재 frontend 코드에서는 token이 없으므로:
+現在のfrontend codeではtokenがないため:
 
 ```text
 /issues
 → /login
 ```
 
-으로 이동한다.
+へ移動する。
 
-그 다음 token을 임의로:
+次にtokenを任意に:
 
 ```text
 abc
 ```
 
-처럼 넣은 뒤 API를 호출하면 backend JWT 검증이 실패해야 한다.
+のように設定してAPIを呼ぶとbackend JWT検証が失敗する必要がある。
 
-이 차이를 이해한다.
+この違いを理解する。
 
 ```text
-Token 없음
-→ frontend에서 login 페이지로 이동
+Tokenなし
+→ frontendでlogin pageへ移動
 
-잘못된 Token
-→ backend에서 Authentication 실패
+不正な Token
+→ backendでAuthentication失敗
 → GraphQL errors
 → frontend error message
 ```
 
 ---
 
-# 9-11. 이 단계에서 일부러 사용하지 않는 것
+# 9-11. この段階であえて使用しないもの
 
-이번 단계에서는 다음을 추가하지 않는다.
+この段階では以下を追加しない。
 
 ```text
 Apollo Client
@@ -4064,16 +4064,16 @@ shadcn/ui
 MUI
 ```
 
-이유:
+理由:
 
 ```text
-지금의 목표
-= Next.js에서 GraphQL/JWT/CRUD 흐름을 직접 보는 것
+現在の目標
+= Next.jsでGraphQL/JWT/CRUDのFlowを直接確認すること
 ```
 
-이기 때문이다.
+だからである。
 
-먼저:
+まず:
 
 ```text
 useState
@@ -4082,9 +4082,9 @@ fetch
 localStorage
 ```
 
-만으로 전체 흐름을 이해한다.
+だけで全体Flowを理解する。
 
-이후 frontend를 고도화할 때:
+その後frontendを高度化する際に:
 
 ```text
 GraphQL Client
@@ -4093,20 +4093,20 @@ Form Validation
 UI Component Library
 ```
 
-를 추가하면 된다.
+を追加すればよい。
 
 ---
 
-# 9단계 완료 기준
+# 9段階 完了基準
 
-다음을 직접 설명할 수 있어야 한다.
+以下を自分の言葉で説明できる必要がある。
 
 ```text
 Register Form
   ↓
 register Mutation
   ↓
-User 생성 / password hash
+User作成 / password hash
   ↓
 Login Form
   ↓
@@ -4125,7 +4125,7 @@ GraphQL Context
 current_user
 ```
 
-그리고 CRUD:
+さらにCRUD:
 
 ```text
 Create
@@ -4141,16 +4141,16 @@ Delete
 → deleteIssue Mutation
 ```
 
-를 브라우저 화면과 Network tab에서 모두 확인해야 한다.
+をBrowser画面とNetwork tabの両方で確認する。
 
-마지막으로:
+最後に:
 
 ```text
-GraphiQL에서는 성공
-Next.js에서는 실패
+GraphiQLでは成功
+Next.jsでは失敗
 ```
 
-한다면 Backend API보다:
+する場合、Backend APIより先に:
 
 ```text
 CORS
@@ -4161,7 +4161,7 @@ fetch
 frontend state
 ```
 
-를 먼저 확인할 수 있어야 한다.
+を確認できる必要がある。
 
 ---
 
@@ -4448,7 +4448,7 @@ Playwright
 → E2E Test
 ```
 
-설치:
+インストール:
 
 ```bash
 npm install -D vitest jsdom \
@@ -4465,10 +4465,10 @@ npx playwright install
 まずは以下のようなUIから独立したLogicをTestする。
 
 ```text
-GraphQL response 변환
+GraphQL response変換
 utility
 validation
-상태 변환 함수
+状態変換関数
 ```
 
 Frameworkを大量にMockするより、**Pure Functionを簡単にTestできる構造**を優先する。
@@ -4477,13 +4477,13 @@ Frameworkを大量にMockするより、**Pure Functionを簡単にTestできる
 
 Component内部の実装詳細より、Userから見える振る舞いをTestする。
 
-예:
+例:
 
 ```text
-Create form을 입력한다
-→ Create 버튼을 누른다
-→ loading 상태가 보인다
-→ 성공 후 입력값이 초기화된다
+Create formに入力する
+→ Create Buttonを押す
+→ loading状態が表示される
+→ 成功後に入力値が初期化される
 ```
 
 ## Playwright E2E
@@ -4495,7 +4495,7 @@ Register
   ↓
 Login
   ↓
-Issue 목록 확인
+Issue一覧 確認
   ↓
 Create
   ↓
@@ -4527,7 +4527,7 @@ E2Eだけを大量に作るのではなく、
 
 ---
 
-# 10단계 — Filter / Search / Cursor Pagination
+# 10段階 — Filter / Search / Cursor Pagination
 
 ## Service query
 
@@ -4586,7 +4586,7 @@ def decode_cursor(
     )
 ```
 
-Cursor SQL 개념:
+Cursor SQLの概念:
 
 ```sql
 SELECT *
@@ -4597,7 +4597,7 @@ ORDER BY id
 LIMIT 20;
 ```
 
-## GraphiQL 확인
+## GraphiQL確認
 
 Filter:
 
@@ -4626,7 +4626,7 @@ query {
 }
 ```
 
-Update 후 filter 재확인:
+Update後にfilterを再確認:
 
 ```graphql
 mutation {
@@ -4646,11 +4646,11 @@ mutation {
 
 
 
-## Frontend에서 Filter / Search 연결
+## FrontendでFilter / Searchを接続
 
-10단계의 backend query가 동작하면 같은 조건을 browser UI에서도 연결한다.
+10段階のbackend queryが動作したら、同じ条件をbrowser UIにも接続する。
 
-최소 UI:
+最小UI:
 
 ```text
 Status Select
@@ -4658,35 +4658,35 @@ Search Input
 Load More
 ```
 
-동작 흐름:
+動作Flow:
 
 ```text
-status / search 변경
+status / search 変更
   ↓
-GraphQL variables 변경
+GraphQL variables 変更
   ↓
-issues Query 재요청
+issues Queryを再Request
   ↓
-결과 목록 갱신
+結果一覧を更新
 ```
 
-Search input은 입력할 때마다 즉시 요청하지 않고 짧은 debounce를 적용해 불필요한 request를 줄이는 것을 확인한다.
+Search inputは入力のたびに即時Requestせず、短いdebounceを適用して不要なrequestを減らすことを確認する。
 
-Cursor pagination은 offset page number가 아니라 마지막으로 받은 cursor를 다음 request의 `after` 값으로 전달하는 방식을 사용한다.
+Cursor paginationはoffset page numberではなく、最後に受け取ったcursorを次のrequestの`after`値として渡す方式を使用する。
 
-이 단계에서는 pagination library를 추가하지 않고 다음 세 가지를 직접 확인한다.
+この段階ではpagination libraryを追加せず、次の3点を直接確認する。
 
 ```text
-1. Filter 조건이 GraphQL variables로 전달되는가
-2. Search 결과가 DB query와 일치하는가
-3. 다음 cursor를 사용했을 때 중복 없이 다음 데이터가 이어지는가
+1. Filter条件がGraphQL variablesとして渡されるか
+2. Search結果がDB queryと一致するか
+3. 次cursorを使用したとき、重複なく次のdataが続くか
 ```
 
-Phase 2에서는 이 흐름을 Apollo Client의 cache / pagination policy와 연결한다.
+Phase 2ではこのFlowをApollo Clientのcache / pagination policyへ接続する。
 
 ---
 
-# 11단계 — Docker Compose + CI
+# 11段階 — Docker Compose + CI
 
 ## Backend Dockerfile
 
@@ -4717,7 +4717,7 @@ CMD [
 ]
 ```
 
-## CI 개념
+## CIの概念
 
 ```text
 push
@@ -4731,7 +4731,7 @@ test
 docker build
 ```
 
-예:
+例:
 
 ```yaml
 name: CI
@@ -4760,9 +4760,9 @@ jobs:
 
 ---
 
-# 12단계 — AWS 배포 방향
+# 12段階 — AWS Deployment方針
 
-학습용 기본 architecture:
+学習用の基本architecture:
 
 ```text
 Internet
@@ -4800,7 +4800,7 @@ ECR Push
 ECS Deploy
 ```
 
-다음 Senior 단계:
+次 Senior 段階:
 
 ```text
 Redis / ElastiCache
@@ -4815,69 +4815,69 @@ System Design
 
 ---
 
-# Async 오류 체크리스트
+# Async Error Checklist
 
 ## 1. `AsyncSession` context manager
 
-잘못:
+誤り:
 
 ```python
 with SessionLocal() as session:
 ```
 
-정상:
+正しいコード:
 
 ```python
 async with SessionLocal() as session:
 ```
 
-## 2. commit / refresh await 누락
+## 2. commit / refreshのawait漏れ
 
-잘못:
+誤り:
 
 ```python
 session.commit()
 session.refresh(model)
 ```
 
-정상:
+正しいコード:
 
 ```python
 await session.commit()
 await session.refresh(model)
 ```
 
-## 3. 중복 await
+## 3. 重複 await
 
-잘못:
+誤り:
 
 ```python
 await await session.commit()
 ```
 
-정상:
+正しいコード:
 
 ```python
 await session.commit()
 ```
 
-## 4. `add()`에 await 사용
+## 4. `add()`にawaitを使用
 
-잘못:
+誤り:
 
 ```python
 await session.add(model)
 ```
 
-정상:
+正しいコード:
 
 ```python
 session.add(model)
 ```
 
-## 5. Resolver async 누락
+## 5. Resolverのasync漏れ
 
-DB service가 async이면 resolver도:
+DB serviceがasyncならresolverも:
 
 ```python
 @strawberry.mutation
@@ -4885,13 +4885,13 @@ async def delete_issue(...):
     return await issue_service.delete_issue(...)
 ```
 
-여야 한다.
+である必要がある。
 
-## 6. `owner`가 GraphQL schema에 없음
+## 6. `owner`がGraphQL schemaにない
 
-`owner()` resolver가 `Issue` 클래스 밖에 있으면 안 된다.
+`owner()` resolverは`Issue` Classの外に置いてはいけない。
 
-정상:
+正しいコード:
 
 ```python
 @strawberry.type
@@ -4905,19 +4905,19 @@ class Issue:
 
 ## 7. `owner_id NOT NULL`
 
-7단계 이전:
+7段階以前:
 
 ```text
-owner_id column 자체가 없음
+owner_id column自体がない
 ```
 
-7단계:
+7段階:
 
 ```text
-seed User + 임시 owner_id
+seed User + 一時 owner_id
 ```
 
-8단계 이후:
+8段階 以降:
 
 ```text
 owner_id = current_user.id
@@ -4925,9 +4925,9 @@ owner_id = current_user.id
 
 ---
 
-# 최종 학습 체크
+# 最終学習チェック
 
-아래를 설명할 수 있어야 한다.
+以下を説明できる必要がある。
 
 ```text
 Query
@@ -4980,17 +4980,17 @@ email/password
 
 ---
 
-# 이 가이드의 불변 규칙
+# このGuideの不変ルール
 
 ```text
-1~4단계
-Memory 기반 → sync 함수 가능
+1~4段階
+Memoryベース → sync関数でよい
 
-5~12단계
-PostgreSQL 기반 → Async SQLAlchemy only
+5~12段階
+PostgreSQL ベース → Async SQLAlchemy only
 ```
 
-즉 5단계 이후에는:
+つまり5段階以降は:
 
 ```text
 create_async_engine
@@ -4999,10 +4999,10 @@ async with SessionLocal()
 async def Resolver
 async def Service
 await execute/get/commit/refresh/delete
-session.add()만 await 없음
+session.add()のみawaitなし
 ```
 
-이 규칙에서 벗어난 코드가 나오면 먼저 오류를 의심한다.
+このルールから外れたcodeが出たら、まずエラーを疑う。
 
 
 # Phase 1 完了基準
