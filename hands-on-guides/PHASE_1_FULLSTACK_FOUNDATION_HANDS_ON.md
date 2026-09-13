@@ -2865,6 +2865,19 @@ export default function Home() {
         </Link>
 
         <Link
+          href="/register"
+          className="
+            rounded
+            border
+            border-gray-300
+            px-4
+            py-2
+          "
+        >
+          Register
+        </Link>
+
+        <Link
           href="/issues"
           className="
             rounded
@@ -2882,7 +2895,7 @@ export default function Home() {
 }
 ```
 
-`/login`と`/issues`へ移動できることを確認する。
+`/login`、`/register`、`/issues`へ移動できることを確認する。
 
 ---
 
@@ -2911,6 +2924,8 @@ import {
 import {
   useRouter,
 } from "next/navigation";
+
+import Link from "next/link";
 
 import {
   RegisterDocument,
@@ -3054,6 +3069,16 @@ export default function RegisterPage() {
             ? "Registering..."
             : "Register"}
         </button>
+
+        <p className="text-center text-sm text-gray-600">
+          Already have an account?{" "}
+          <Link
+            href="/login"
+            className="underline"
+          >
+            Login
+          </Link>
+        </p>
       </form>
     </main>
   );
@@ -3068,6 +3093,7 @@ export default function RegisterPage() {
 3. 登録後/issuesへ移動する
 4. Logout後、登録したEmail / PasswordでLoginできる
 5. 同じEmailでは登録できない
+6. LoginへのLinkから/loginへ移動できる
 ```
 
 ---
@@ -3097,6 +3123,8 @@ import {
 import {
   useRouter,
 } from "next/navigation";
+
+import Link from "next/link";
 
 import {
   LoginDocument,
@@ -3324,6 +3352,16 @@ export default function LoginPage() {
               : "Login"
           }
         </button>
+
+        <p className="text-center text-sm text-gray-600">
+          Don&apos;t have an account?{" "}
+          <Link
+            href="/register"
+            className="underline"
+          >
+            Create account
+          </Link>
+        </p>
       </form>
     </main>
   );
@@ -3338,6 +3376,7 @@ export default function LoginPage() {
 3. Error時はMessageが表示される
 4. Success時はaccessTokenが保存される
 5. /issuesへ遷移する
+6. Create accountから/registerへ移動できる
 ```
 
 ---
