@@ -1156,7 +1156,514 @@ localStorage AuthがSSRを制限する理由
 説明できれば、
 Folder Structureを暗記するのではなく
 Architecture判断ができている。
-# Step 28 — Backend Architecture Decision Record
+
+# Step 33 — REST / GraphQL / gRPCの役割を比較する
+
+ここまでBrowser向けAPIはGraphQLを利用してきた。
+
+Phase 3では、API方式を「どれが一番良いか」ではなく、
+**通信する相手と要件によって選ぶ**。
+
+```text
+Browser
+→ GraphQL
+→ FastAPI / Strawberry
+
+Backend Service
+→ gRPC
+→ Internal Service
+```
+
+比較:
+
+| 観点 | REST | GraphQL | gRPC |
+|---|---|---|---|
+| 主な用途 | Public / General API | Browser / BFF | Service-to-Service |
+| Contract | OpenAPI等 | GraphQL Schema | Protocol Buffers |
+| Payload | JSON中心 | JSON | Protobuf |
+| Transport | HTTP | HTTP | HTTP/2 |
+| Streaming | 限定的 | Subscription等 | Native Streaming |
+| Browserから直接利用 | 容易 | 容易 | 通常は直接使わない |
+| Code Generation | Optional | Codegen | 基本 |
+
+このProjectでは:
+
+```text
+Next.js
+  ↓ GraphQL
+Issue API
+  ↓ gRPC
+User Profile Service
+```
+
+とする。
+
+User Profile取得はResponseが必要な同期処理なので、
+gRPCの題材として扱いやすい。
+
+一方:
+
+```text
+Issue Created
+→ Email Notification
+```
+
+のような「今すぐResponseが不要な処理」は、
+Phase 2で学んだKafka / Queueの方が自然な場合が多い。
+
+---
+
+# Step 34 — gRPC / Protocol Buffers Setup
+
+Backend側へ追加:
+
+```bash
+uv add \
+  grpcio \
+  grpcio-tools \
+  protobuf
+```
+
+Structure:
+
+```text
+backend/
+├── proto/
+│   └── user.proto
+│
+├── src/
+│   └── app/
+│       ├── grpc_generated/
+│       ├── grpc_clients/
+│       │   └── user_client.py
+│       └── ...
+│
+└── services/
+    └── user_profile/
+        └── server.py
+```
+
+`.proto`をContractのSource of Truthとして扱う。
+
+---
+
+# Step 35 — `.proto` Contractを書く
+
+`backend/proto/user.proto`
+
+```proto
+syntax = "proto3";
+
+package user.v1;
+
+
+service UserProfileService {
+  rpc GetUser(
+    GetUserRequest
+  ) returns (
+    GetUserResponse
+  );
+}
+
+
+message GetUserRequest {
+  int64 user_id = 1;
+}
+
+
+message GetUserResponse {
+  int64 id = 1;
+  string name = 2;
+  string email = 3;
+}
+```
+
+重要:
+
+```text
+service
+→ RPC Interface
+
+message
+→ Request / Response Contract
+
+field number
+→ Wire Format上の識別子
+```
+
+Field Numberは一度公開したら安易に再利用しない。
+
+---
+
+# Step 36 — Python Stubを生成する
+
+Project Rootから:
+
+```bash
+uv run python \
+  -m grpc_tools.protoc \
+  -I proto \
+  --python_out=src/app/grpc_generated \
+  --grpc_python_out=src/app/grpc_generated \
+  proto/user.proto
+```
+
+生成物:
+
+```text
+user_pb2.py
+user_pb2_grpc.py
+```
+
+直接編集しない。
+
+GraphQL Codegenと同様:
+
+```text
+.proto
+↓
+Code Generation
+↓
+Client / Server Stub
+```
+
+というContract-driven Developmentを確認する。
+
+---
+
+# Step 37 — Async gRPC Serverを実装する
+
+`grpc.aio`を使い、
+現在のAsync Python Stackと合わせる。
+
+概念:
+
+```python
+import grpc
+
+from app.grpc_generated import (
+    user_pb2,
+    user_pb2_grpc,
+)
+
+
+class UserProfileService(
+    user_pb2_grpc.UserProfileServiceServicer
+):
+    async def GetUser(
+        self,
+        request,
+        context,
+    ):
+        user_id = request.user_id
+
+        # 学習用。
+        # 実際にはRepository等から取得する。
+        return user_pb2.GetUserResponse(
+            id=user_id,
+            name="Demo User",
+            email="demo@example.com",
+        )
+
+
+async def serve():
+    server = grpc.aio.server()
+
+    user_pb2_grpc.add_UserProfileServiceServicer_to_server(
+        UserProfileService(),
+        server,
+    )
+
+    server.add_insecure_port(
+        "[::]:50051"
+    )
+
+    await server.start()
+    await server.wait_for_termination()
+```
+
+ここではまずTransportを理解する。
+
+TLS / Service AuthenticationはPhase 5で扱う。
+
+---
+
+# Step 38 — Async gRPC ClientをIssue APIへ接続する
+
+`src/app/grpc_clients/user_client.py`
+
+```python
+import grpc
+
+from app.grpc_generated import (
+    user_pb2,
+    user_pb2_grpc,
+)
+
+
+class UserProfileClient:
+    def __init__(
+        self,
+        target: str,
+    ):
+        self.target = target
+
+    async def get_user(
+        self,
+        user_id: int,
+    ):
+        async with grpc.aio.insecure_channel(
+            self.target
+        ) as channel:
+            stub = (
+                user_pb2_grpc
+                .UserProfileServiceStub(
+                    channel
+                )
+            )
+
+            response = await stub.GetUser(
+                user_pb2.GetUserRequest(
+                    user_id=user_id
+                ),
+                timeout=1.0,
+            )
+
+            return response
+```
+
+Application側:
+
+```text
+GraphQL Resolver
+↓
+Application Service
+↓
+UserProfileClient Port
+↓
+gRPC Adapter
+↓
+User Profile Service
+```
+
+gRPC StubをResolverへ直接埋め込まない。
+
+---
+
+# Step 39 — Deadline / Error Statusを扱う
+
+分散SystemではRemote Callが永遠に成功するとは考えない。
+
+Client側:
+
+```python
+try:
+    response = await stub.GetUser(
+        request,
+        timeout=1.0,
+    )
+
+except grpc.aio.AioRpcError as error:
+    if (
+        error.code()
+        == grpc.StatusCode.DEADLINE_EXCEEDED
+    ):
+        ...
+```
+
+Server側:
+
+```python
+await context.abort(
+    grpc.StatusCode.NOT_FOUND,
+    "user not found",
+)
+```
+
+確認するStatus:
+
+```text
+OK
+INVALID_ARGUMENT
+NOT_FOUND
+UNAUTHENTICATED
+PERMISSION_DENIED
+DEADLINE_EXCEEDED
+UNAVAILABLE
+INTERNAL
+```
+
+HTTP StatusとgRPC Statusの違いを比較する。
+
+---
+
+# Step 40 — Unary / Streamingを体験する
+
+まずMain Use CaseはUnary RPC:
+
+```text
+1 Request
+→
+1 Response
+```
+
+その後、別の小さなPracticeとしてStreamingを試す。
+
+```proto
+rpc WatchUserStatus(
+  WatchUserStatusRequest
+) returns (
+  stream UserStatusEvent
+);
+```
+
+学習対象:
+
+```text
+Unary
+Server Streaming
+Client Streaming
+Bidirectional Streaming
+```
+
+すべてをIssue Trackerへ無理に組み込まなくてよい。
+
+「Streamingが必要な要件は何か」を説明できることをGoalにする。
+
+---
+
+# Step 41 — gRPC vs KafkaをArchitectureで選ぶ
+
+同じService間通信でも目的が違う。
+
+## gRPC
+
+```text
+Callerが今Responseを必要とする
+Strong Contract
+Low LatencyなRequest / Response
+```
+
+例:
+
+```text
+Issue API
+→ User Service
+→ User Profile取得
+```
+
+## Kafka / Queue
+
+```text
+Callerが即時Responseを必要としない
+非同期
+複数Consumer
+Replay
+Producer / Consumerを疎結合化
+```
+
+例:
+
+```text
+Issue Created
+→ Event
+→ Notification
+→ Analytics
+→ Audit
+```
+
+判断Exercise:
+
+```text
+User Profile取得
+→ gRPC
+
+Notification送信
+→ Kafka / Queue
+
+Public Browser API
+→ GraphQL
+
+外部Partner向けSimple API
+→ REST候補
+```
+
+Protocolを流行ではなく要件で選ぶ。
+
+---
+
+# Step 42 — gRPC Integration Test
+
+Serverを立てた状態で
+実際のStubを使うIntegration Testを作る。
+
+確認:
+
+```text
+正常なUser
+Not Found
+Invalid Request
+Deadline
+Service Down
+```
+
+Fake Clientも用意し、
+Application ServiceのUnit TestではNetworkを使わない。
+
+```python
+class FakeUserProfileClient:
+    async def get_user(
+        self,
+        user_id: int,
+    ):
+        return UserProfile(
+            id=user_id,
+            name="Test User",
+            email="test@example.com",
+        )
+```
+
+ここでも重要なのはDependency Direction。
+
+```text
+Application
+→ Interface
+
+Infrastructure
+→ gRPC Implementation
+```
+
+---
+
+# Step 43 — gRPC Architecture Review
+
+最後に説明する。
+
+```text
+なぜBrowser → gRPCにしなかったか
+
+GraphQLとgRPCの役割の違い
+
+.protoがContractになる理由
+
+Generated Stubを直接編集しない理由
+
+Deadlineが必要な理由
+
+gRPC StatusとHTTP Statusの違い
+
+同期処理をgRPC、
+非同期処理をKafkaへ分ける判断
+
+gRPC ClientをResolverへ直接置かない理由
+```
+
+ここまで説明できれば、
+gRPC Syntaxではなく
+Service Communication Architectureを理解している。
+
+
+# Step 44 — Backend Architecture Decision Record
 
 `docs/adr/001-repository.md`
 
@@ -1209,4 +1716,7 @@ Architecture
 [ ] Refactoring後もTestが通る
 [ ] Backend / FrontendそれぞれのADRを書ける
 [ ] 「なぜこのLayerが必要か」を説明できる
+[ ] REST / GraphQL / gRPC / Kafkaを要件で選択できる
+[ ] .proto / Stub / Deadline / Status Codeを説明できる
+[ ] gRPCをApplication Layerから分離してTestできる
 ```
