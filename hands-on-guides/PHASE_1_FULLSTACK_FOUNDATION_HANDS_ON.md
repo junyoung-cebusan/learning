@@ -2247,30 +2247,31 @@ Frontendまで含む実際のUser Flow
 
 ---
 
-# 9段階 — Next.js + Tailwindで実際のCRUD画面を作る
+# Step 14 — Next.js + Tailwindで実際の画面を作る
 
-> 目標: GraphiQLで確認していたJWT LoginとIssue CRUDを、今回は**Browser画面で直接確認**する。
->
-> この段階では学習範囲を不必要に広げないため Apollo Client, urql, React Query, Zustand,
-> React Hook Form などのLibraryは追加しない。
->
-> 使用するもの:
->
-> ```text
-> Next.js App Router
-> TypeScript
-> Tailwind CSS
-> Browser fetch
-> localStorage
-> ```
->
-> のみとする。
+## Goal
+
+GraphiQLで確認してきたLogin / JWT / Issue CRUDを、今度はBrowser上の実画面から操作する。
+
+この段階ではFrontend側の仕組みを見えやすくするため、Apollo Client、urql、TanStack Query、Zustandなどはまだ追加しない。
+
+```text
+Next.js App Router
+TypeScript
+Tailwind CSS
+fetch
+localStorage
+```
+
+だけで完成させる。
+
+> Phase 1ではJWTの仕組みを確認しやすくするため`localStorage`を使用する。HttpOnly Cookie / Refresh Token / CSRFはPhase 5で扱う。
 
 ---
 
-## 9-1. Next.js Project作成
+## Step 14.1 — Next.js Project作成
 
-Project rootで:
+Project rootで実行する。
 
 ```bash
 npx create-next-app@latest frontend \
@@ -2278,26 +2279,23 @@ npx create-next-app@latest frontend \
   --eslint \
   --tailwind \
   --app \
-  --src-dir \
-  --use-npm
+  --src-dir
 ```
 
-現在の`create-next-app`はTypeScript、Tailwind CSS、App Routerを正式にサポートしている。
-
-作成後:
+起動:
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-確認:
+Browser:
 
 ```text
 http://localhost:3000
 ```
 
-この段階のfrontend構成:
+Frontendの構成:
 
 ```text
 frontend/
@@ -2318,23 +2316,11 @@ frontend/
 
 ---
 
-## 9-2. Backend CORS
+## Step 14.2 — Backend CORS
 
-BrowserのNext.js applicationは:
+Frontendは`http://localhost:3000`、Backendは`http://localhost:8000`なので、開発環境ではCORSを許可する。
 
-```text
-http://localhost:3000
-```
-
-Backendは:
-
-```text
-http://localhost:8000
-```
-
-そのため開発環境ではCORS許可が必要である。
-
-Backend `src/app/main.py`:
+`src/app/main.py`:
 
 ```python
 from fastapi.middleware.cors import (
@@ -2342,7 +2328,7 @@ from fastapi.middleware.cors import (
 )
 ```
 
-`app = FastAPI(...)` 作成後:
+`app = FastAPI(...)`の後に追加する。
 
 ```python
 app.add_middleware(
@@ -2356,11 +2342,11 @@ app.add_middleware(
 )
 ```
 
-開発段階ではこの設定を使用するが、productionでは許可するoriginを実際のfrontend domainに制限する。
+Productionでは実際のFrontend Originだけを許可する。
 
 ---
 
-## 9-3. GraphQL URL 環境変数
+## Step 14.3 — GraphQL URL
 
 `frontend/.env.local`:
 
@@ -2368,9 +2354,7 @@ app.add_middleware(
 NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8000/graphql
 ```
 
-`NEXT_PUBLIC_` prefixが付いた環境変数はbrowser/client codeからも利用できる。
-
-環境変数を追加した後はdev serverを再起動する。
+Environment Variable追加後はDev Serverを再起動する。
 
 ```bash
 npm run dev
@@ -2378,31 +2362,421 @@ npm run dev
 
 ---
 
-## 9-4. 最小GraphQL Request Helper
+## Step 14.4 — graphql-request + `.graphql` + GraphQL Code Generator
 
-`src/lib/graphql.ts`:
+FrontendではGraphQL OperationをComponent内のStringとして管理しない。
+
+```text
+.graphql File
+→ GraphQL Code Generator
+→ TypedDocumentNode
+→ graphql-request
+```
+
+という構成にする。
+
+### Install
+
+```bash
+npm install \
+  graphql \
+  graphql-request
+
+npm install -D \
+  @graphql-codegen/cli \
+  @graphql-codegen/typescript \
+  @graphql-codegen/typescript-operations \
+  @graphql-codegen/typed-document-node
+```
+
+### Structure
+
+```text
+frontend/
+├── codegen.ts
+└── src/
+    ├── app/
+    ├── graphql/
+    │   ├── register.graphql
+    │   ├── login.graphql
+    │   ├── issues.graphql
+    │   ├── create-issue.graphql
+    │   ├── update-issue.graphql
+    │   └── delete-issue.graphql
+    ├── generated/
+    │   └── graphql.ts
+    └── lib/
+        └── graphql-client.ts
+```
+
+### GraphQL Documents
+
+`src/graphql/register.graphql`:
+
+```graphql
+mutation Register(
+  $input: RegisterInput!
+) {
+  register(
+    input: $input
+  ) {
+    accessToken
+
+    user {
+      id
+      name
+      email
+    }
+  }
+}
+```
+
+`src/graphql/login.graphql`:
+
+```graphql
+mutation Login(
+  $input: LoginInput!
+) {
+  login(
+    input: $input
+  ) {
+    accessToken
+
+    user {
+      id
+      name
+      email
+    }
+  }
+}
+```
+
+`src/graphql/issues.graphql`:
+
+```graphql
+query GetIssues {
+  issues {
+    id
+    title
+    description
+    status
+
+    owner {
+      id
+      name
+      email
+    }
+  }
+}
+```
+
+`src/graphql/create-issue.graphql`:
+
+```graphql
+mutation CreateIssue(
+  $input: CreateIssueInput!
+) {
+  createIssue(
+    input: $input
+  ) {
+    id
+    title
+    description
+    status
+
+    owner {
+      id
+      name
+      email
+    }
+  }
+}
+```
+
+`src/graphql/update-issue.graphql`:
+
+```graphql
+mutation UpdateIssue(
+  $id: Int!
+  $input: UpdateIssueInput!
+) {
+  updateIssue(
+    id: $id
+    input: $input
+  ) {
+    id
+    title
+    description
+    status
+  }
+}
+```
+
+`src/graphql/delete-issue.graphql`:
+
+```graphql
+mutation DeleteIssue(
+  $id: Int!
+) {
+  deleteIssue(
+    id: $id
+  )
+}
+```
+
+### Codegen Config
+
+`frontend/codegen.ts`:
 
 ```typescript
-const GRAPHQL_URL =
-  process.env.NEXT_PUBLIC_GRAPHQL_URL
-  ?? "http://localhost:8000/graphql";
+import type {
+  CodegenConfig,
+} from "@graphql-codegen/cli";
 
 
-type GraphQLError = {
-  message: string;
-};
+const config:
+  CodegenConfig = {
+    schema:
+      "http://localhost:8000/graphql",
+
+    documents:
+      "src/graphql/**/*.graphql",
+
+    generates: {
+      "src/generated/graphql.ts": {
+        plugins: [
+          "typescript-operations",
+          "typed-document-node",
+        ],
+      },
+    },
+  };
 
 
-type GraphQLResponse<T> = {
-  data?: T;
-  errors?: GraphQLError[];
-};
+export default config;
+```
+
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "codegen": "graphql-codegen --config codegen.ts"
+  }
+}
+```
+
+Backendを起動した状態で実行する。
+
+```bash
+npm run codegen
+```
+
+生成例:
+
+```text
+RegisterDocument
+RegisterMutation
+RegisterMutationVariables
+LoginDocument
+LoginMutation
+LoginMutationVariables
+GetIssuesDocument
+CreateIssueDocument
+UpdateIssueDocument
+DeleteIssueDocument
+```
+
+### 生成されたType / Documentを実際に使う
+
+CodegenはTypeを生成するだけで終わりではない。
+
+このPhaseでは、生成されたTypeと`TypedDocumentNode`を実際のFrontendコードで使う。
+
+生成された代表的なもの:
+
+```text
+LoginDocument
+LoginMutation
+LoginMutationVariables
+
+GetIssuesDocument
+GetIssuesQuery
+
+CreateIssueDocument
+CreateIssueMutation
+CreateIssueMutationVariables
+```
+
+---
+
+#### `LoginDocument`でResponse / Variablesの型を自動推論する
+
+`LoginDocument`は単なる文字列ではなく、Codegenが生成した`TypedDocumentNode`。
+
+そのため`graphql-request`に渡すと、ResponseとVariablesの型を自動的に推論できる。
+
+```typescript
+import {
+  LoginDocument,
+} from "@/generated/graphql";
+
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
 
 
-export async function graphqlRequest<T>(
-  query: string,
-  variables?: Record<string, unknown>,
-): Promise<T> {
+const data =
+  await getGraphQLClient().request(
+    LoginDocument,
+    {
+      input: {
+        email,
+        password,
+      },
+    },
+  );
+
+
+localStorage.setItem(
+  "accessToken",
+  data.login.accessToken,
+);
+```
+
+ここでは`data`に手動で型を書く必要がない。
+
+```typescript
+data.login.accessToken
+data.login.user.id
+data.login.user.name
+data.login.user.email
+```
+
+がCodegenによって型付けされる。
+
+存在しないFieldを書いた場合:
+
+```typescript
+data.login.user.username
+```
+
+Schema / Operationに`username`が存在しなければTypeScript Errorになる。
+
+---
+
+#### Variablesの型もCodegenから取得できる
+
+必要であれば生成されたVariables Typeを明示的に利用できる。
+
+```typescript
+import type {
+  LoginMutationVariables,
+} from "@/generated/graphql";
+
+
+const variables:
+  LoginMutationVariables = {
+    input: {
+      email,
+      password,
+    },
+  };
+
+
+const data =
+  await getGraphQLClient().request(
+    LoginDocument,
+    variables,
+  );
+```
+
+ただし通常は`LoginDocument`からVariables Typeが推論されるため、毎回明示的に書く必要はない。
+
+---
+
+#### Query Response TypeをUI Stateに利用する
+
+Issue型をFrontend側で手書きしない。
+
+```typescript
+import type {
+  GetIssuesQuery,
+} from "@/generated/graphql";
+
+
+type Issue =
+  GetIssuesQuery["issues"][number];
+```
+
+これにより:
+
+```typescript
+const [
+  issues,
+  setIssues,
+] = useState<Issue[]>([]);
+```
+
+の`Issue`型がGraphQL Operationと同期する。
+
+Backend Schemaまたは`.graphql` Operationを変更した場合:
+
+```bash
+npm run codegen
+```
+
+を再実行する。
+
+するとGenerated Typeが更新され、Frontend側で影響箇所をTypeScript Errorとして確認できる。
+
+---
+
+#### このPhaseで確認すること
+
+```text
+1. .graphql Fileを変更
+2. npm run codegen
+3. src/generated/graphql.tsが更新される
+4. Generated Documentをgraphql-requestへ渡す
+5. Response / Variablesが自動で型付けされる
+6. Generated Query TypeをUI Stateにも利用する
+```
+
+つまりこのPhaseの目的は:
+
+```text
+Backend Schema
+↓
+.graphql Operation
+↓
+Codegen
+↓
+TypedDocumentNode + TypeScript Type
+↓
+graphql-request
+↓
+React UI
+```
+
+までを一つの流れとして理解すること。
+
+### GraphQL Client
+
+`src/lib/graphql-client.ts`:
+
+```typescript
+import {
+  GraphQLClient,
+} from "graphql-request";
+
+
+const endpoint =
+  process.env
+    .NEXT_PUBLIC_GRAPHQL_URL!;
+
+
+export function getGraphQLClient() {
   const token =
     typeof window !== "undefined"
       ? localStorage.getItem(
@@ -2410,78 +2784,27 @@ export async function graphqlRequest<T>(
         )
       : null;
 
-  const response = await fetch(
-    GRAPHQL_URL,
+  return new GraphQLClient(
+    endpoint,
     {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json",
-
-        ...(token
-          ? {
-              Authorization:
-                `Bearer ${token}`,
-            }
-          : {}),
-      },
-
-      body: JSON.stringify({
-        query,
-        variables,
-      }),
-
-      cache: "no-store",
+      headers: token
+        ? {
+            Authorization:
+              `Bearer ${token}`,
+          }
+        : {},
     },
   );
-
-  const result:
-    GraphQLResponse<T> =
-      await response.json();
-
-  if (result.errors?.length) {
-    throw new Error(
-      result.errors
-        .map(
-          (error) =>
-            error.message,
-        )
-        .join("
-"),
-    );
-  }
-
-  if (!result.data) {
-    throw new Error(
-      "GraphQL response has no data",
-    );
-  }
-
-  return result.data;
 }
 ```
 
-Flow:
-
-```text
-React Component
-  ↓
-graphqlRequest()
-  ↓
-POST /graphql
-  ↓
-Authorization: Bearer JWT
-  ↓
-FastAPI / Strawberry
-```
-
-別途GraphQL client libraryを使わなくても、GraphQLは最終的にHTTP POST requestなので十分に実習できる。
+この段階ではServer State Cacheはまだ追加しない。
+Phase 2でApollo Clientを導入し、GraphQL Cacheを本格的に学ぶ。
 
 ---
+## Step 14.5 — Root Page
 
-## 9-5. Root Page
-
-`src/app/page.tsx`:
+`frontend/src/app/page.tsx`:
 
 ```tsx
 import Link from "next/link";
@@ -2559,33 +2882,23 @@ export default function Home() {
 }
 ```
 
-ここではroutingのみ確認する。
+`/login`と`/issues`へ移動できることを確認する。
 
 ---
 
+## Step 14.5.5 — Registration Page
 
-
-# 9-5A. Register画面
-
-Backendにはすでに`RegisterInput`、`services/auth.py`の`register()`、GraphQL `register` Mutationがあるため、新しいbackend構成は作らない。
-
-今回はbrowserで実際の会員登録Flowを接続する。
+この画面で次のFlowを確認する。
 
 ```text
-/register
-  ↓
-name / email / password
-  ↓
-register Mutation
-  ↓
-AuthPayload
-  ↓
-accessToken保存
-  ↓
-/issuesへ移動
+Name / Email / Password入力
+→ register Mutation
+→ AuthPayload受信
+→ accessToken保存
+→ /issuesへ移動
 ```
 
-`src/app/register/page.tsx`:
+`frontend/src/app/register/page.tsx`:
 
 ```tsx
 "use client";
@@ -2594,45 +2907,18 @@ import {
   FormEvent,
   useState,
 } from "react";
+
 import {
   useRouter,
 } from "next/navigation";
 
 import {
-  graphqlRequest,
-} from "@/lib/graphql";
+  RegisterDocument,
+} from "@/generated/graphql";
 
-
-const REGISTER = `
-  mutation Register(
-    $input: RegisterInput!
-  ) {
-    register(
-      input: $input
-    ) {
-      accessToken
-
-      user {
-        id
-        name
-        email
-      }
-    }
-  }
-`;
-
-
-type RegisterResponse = {
-  register: {
-    accessToken: string;
-
-    user: {
-      id: number;
-      name: string;
-      email: string;
-    };
-  };
-};
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
 
 
 export default function RegisterPage() {
@@ -2644,6 +2930,7 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,
   ) {
@@ -2653,17 +2940,18 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const data =
-        await graphqlRequest<RegisterResponse>(
-          REGISTER,
-          {
-            input: {
-              name,
-              email,
-              password,
-            },
+      const client = getGraphQLClient();
+
+      const data = await client.request(
+        RegisterDocument,
+        {
+          input: {
+            name,
+            email,
+            password,
           },
-        );
+        },
+      );
 
       localStorage.setItem(
         "accessToken",
@@ -2682,50 +2970,77 @@ export default function RegisterPage() {
     }
   }
 
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-md items-center p-6">
+    <main
+      className="mx-auto flex min-h-screen max-w-md items-center p-6"
+    >
       <form
         onSubmit={handleSubmit}
         className="w-full space-y-4 rounded-lg border border-gray-200 p-6"
       >
+        <h1 className="text-2xl font-bold">
+          Register
+        </h1>
+
         <div>
-          <h1 className="text-2xl font-bold">
-            Create account
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            GraphQL user registration
-          </p>
+          <label
+            htmlFor="name"
+            className="mb-1 block text-sm font-medium"
+          >
+            Name
+          </label>
+          <input
+            id="name"
+            value={name}
+            onChange={(event) =>
+              setName(event.target.value)
+            }
+            className="w-full rounded border border-gray-300 px-3 py-2"
+            required
+          />
         </div>
 
-        <input
-          type="text"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Name"
-          required
-          className="w-full rounded border border-gray-300 px-3 py-2"
-        />
+        <div>
+          <label
+            htmlFor="email"
+            className="mb-1 block text-sm font-medium"
+          >
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(event) =>
+              setEmail(event.target.value)
+            }
+            className="w-full rounded border border-gray-300 px-3 py-2"
+            required
+          />
+        </div>
 
-        <input
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="Email"
-          required
-          className="w-full rounded border border-gray-300 px-3 py-2"
-        />
-
-        <input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="Password"
-          required
-          className="w-full rounded border border-gray-300 px-3 py-2"
-        />
+        <div>
+          <label
+            htmlFor="password"
+            className="mb-1 block text-sm font-medium"
+          >
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(event) =>
+              setPassword(event.target.value)
+            }
+            className="w-full rounded border border-gray-300 px-3 py-2"
+            required
+          />
+        </div>
 
         {error && (
-          <p className="rounded bg-red-50 p-3 text-sm text-red-700">
+          <p className="text-sm text-red-600">
             {error}
           </p>
         )}
@@ -2735,7 +3050,9 @@ export default function RegisterPage() {
           disabled={loading}
           className="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-50"
         >
-          {loading ? "Creating..." : "Create account"}
+          {loading
+            ? "Registering..."
+            : "Register"}
         </button>
       </form>
     </main>
@@ -2743,40 +3060,31 @@ export default function RegisterPage() {
 }
 ```
 
-Root pageでは既存の`Login`、`Issues` Linkを維持し、`Register` Linkのみ追加する。
+確認する。
 
-```tsx
-<Link
-  href="/register"
-  className="rounded border border-gray-300 px-4 py-2"
->
-  Register
-</Link>
+```text
+1. /registerからUserを作成できる
+2. register ResponseのaccessTokenがlocalStorageへ保存される
+3. 登録後/issuesへ移動する
+4. Logout後、登録したEmail / PasswordでLoginできる
+5. 同じEmailでは登録できない
 ```
-
-同じemailで再登録すると、backendの`Email already registered`エラーがGraphQL errorとして返り、画面のerror messageで確認できる必要がある。
 
 ---
 
-# 9-6. Login画面
+## Step 14.6 — Login Page
 
-この画面では:
+この画面で次のFlowを確認する。
 
 ```text
-email/password入力
-  ↓
-login Mutation
-  ↓
-accessToken応答
-  ↓
-localStorage保存
-  ↓
-/issuesへ移動
+Email / Password入力
+→ login Mutation
+→ accessToken取得
+→ localStorage保存
+→ /issuesへ移動
 ```
 
-を確認する。
-
-`src/app/login/page.tsx`:
+`frontend/src/app/login/page.tsx`:
 
 ```tsx
 "use client";
@@ -2791,40 +3099,12 @@ import {
 } from "next/navigation";
 
 import {
-  graphqlRequest,
-} from "@/lib/graphql";
+  LoginDocument,
+} from "@/generated/graphql";
 
-
-const LOGIN = `
-  mutation Login(
-    $input: LoginInput!
-  ) {
-    login(
-      input: $input
-    ) {
-      accessToken
-
-      user {
-        id
-        name
-        email
-      }
-    }
-  }
-`;
-
-
-type LoginResponse = {
-  login: {
-    accessToken: string;
-
-    user: {
-      id: number;
-      name: string;
-      email: string;
-    };
-  } | null;
-};
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
 
 
 export default function LoginPage() {
@@ -2860,9 +3140,12 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      const client =
+        getGraphQLClient();
+
       const data =
-        await graphqlRequest<LoginResponse>(
-          LOGIN,
+        await client.request(
+          LoginDocument,
           {
             input: {
               email,
@@ -3047,29 +3330,31 @@ export default function LoginPage() {
 }
 ```
 
----
-
-# 9-7. Issue CRUD画面
-
-1つの画面でCRUDをすべて確認する。
+確認ポイント:
 
 ```text
-READ
-Issue一覧
-
-CREATE
-新規Issue form
-
-UPDATE
-DONE Button
-
-DELETE
-Delete Button
+1. Email / Passwordを入力できる
+2. Login中はButtonがdisabledになる
+3. Error時はMessageが表示される
+4. Success時はaccessTokenが保存される
+5. /issuesへ遷移する
 ```
 
-複雑なstate libraryは使わず、React `useState`のみを使用する。
+---
 
-`src/app/issues/page.tsx`:
+## Step 14.7 — Issue CRUD Page
+
+1画面で以下を確認する。
+
+```text
+READ   → Issue List
+CREATE → FormからIssue作成
+UPDATE → Done Button
+DELETE → Delete Button
+LOGOUT → Token削除
+```
+
+`frontend/src/app/issues/page.tsx`:
 
 ```tsx
 "use client";
@@ -3086,111 +3371,20 @@ import {
 } from "next/navigation";
 
 import {
-  graphqlRequest,
-} from "@/lib/graphql";
+  CreateIssueDocument,
+  DeleteIssueDocument,
+  GetIssuesDocument,
+  UpdateIssueDocument,
+  type GetIssuesQuery,
+} from "@/generated/graphql";
+
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
 
 
-type Issue = {
-  id: number;
-  title: string;
-  description: string | null;
-  status: string;
-
-  owner: {
-    id: number;
-    name: string;
-    email: string;
-  };
-};
-
-
-const GET_ISSUES = `
-  query GetIssues {
-    issues {
-      id
-      title
-      description
-      status
-
-      owner {
-        id
-        name
-        email
-      }
-    }
-  }
-`;
-
-
-const CREATE_ISSUE = `
-  mutation CreateIssue(
-    $input: CreateIssueInput!
-  ) {
-    createIssue(
-      input: $input
-    ) {
-      id
-      title
-      description
-      status
-
-      owner {
-        id
-        name
-        email
-      }
-    }
-  }
-`;
-
-
-const UPDATE_ISSUE = `
-  mutation UpdateIssue(
-    $id: Int!
-    $input: UpdateIssueInput!
-  ) {
-    updateIssue(
-      id: $id
-      input: $input
-    ) {
-      id
-      title
-      description
-      status
-    }
-  }
-`;
-
-
-const DELETE_ISSUE = `
-  mutation DeleteIssue(
-    $id: Int!
-  ) {
-    deleteIssue(
-      id: $id
-    )
-  }
-`;
-
-
-type IssuesResponse = {
-  issues: Issue[];
-};
-
-
-type CreateIssueResponse = {
-  createIssue: Issue;
-};
-
-
-type UpdateIssueResponse = {
-  updateIssue: Issue | null;
-};
-
-
-type DeleteIssueResponse = {
-  deleteIssue: boolean;
-};
+type Issue =
+  GetIssuesQuery["issues"][number];
 
 
 export default function IssuesPage() {
@@ -3233,11 +3427,12 @@ export default function IssuesPage() {
         setError("");
 
         try {
+          const client =
+            getGraphQLClient();
+
           const data =
-            await graphqlRequest<
-              IssuesResponse
-            >(
-              GET_ISSUES,
+            await client.request(
+              GetIssuesDocument,
             );
 
           setIssues(
@@ -3295,10 +3490,8 @@ export default function IssuesPage() {
 
     try {
       const data =
-        await graphqlRequest<
-          CreateIssueResponse
-        >(
-          CREATE_ISSUE,
+        await getGraphQLClient().request(
+          CreateIssueDocument,
           {
             input: {
               title,
@@ -3336,10 +3529,8 @@ export default function IssuesPage() {
 
     try {
       const data =
-        await graphqlRequest<
-          UpdateIssueResponse
-        >(
-          UPDATE_ISSUE,
+        await getGraphQLClient().request(
+          UpdateIssueDocument,
           {
             id: issueId,
 
@@ -3384,10 +3575,8 @@ export default function IssuesPage() {
 
     try {
       const data =
-        await graphqlRequest<
-          DeleteIssueResponse
-        >(
-          DELETE_ISSUE,
+        await getGraphQLClient().request(
+          DeleteIssueDocument,
           {
             id: issueId,
           },
@@ -3728,27 +3917,23 @@ export default function IssuesPage() {
 }
 ```
 
+このStepではUI Libraryを追加せず、Tailwindだけで最低限の画面を作る。
+
 ---
 
-# 9-8. 実際に確認するCRUD Flow
-
-Backendとfrontendを両方起動する。
+## Step 14.8 — BrowserでCRUD確認
 
 Backend:
 
 ```bash
 cd backend
-
-uv run uvicorn \
-  app.main:app \
-  --reload
+uv run uvicorn app.main:app --reload
 ```
 
 Frontend:
 
 ```bash
 cd frontend
-
 npm run dev
 ```
 
@@ -3758,49 +3943,9 @@ Browser:
 http://localhost:3000/login
 ```
 
-## 0. Register
+### Login
 
-まずbrowserから直接Userを登録する。
-
-```text
-http://localhost:3000/register
-```
-
-例:
-
-```text
-Name: Hwang
-Email: hwang@example.com
-Password: password123
-```
-
-成功すると`accessToken`が保存され、`/issues`へ移動する必要がある。
-
-同じemailでもう一度登録し、重複emailエラーも確認する。
-
----
-
-## 1. Login
-
-先ほど登録したUserでLoginする。
-
-例:
-
-```text
-hwang@example.com
-password123
-```
-
-成功すると:
-
-```text
-localStorage
-└── accessToken
-```
-
-が保存され、`/issues`へ移動する必要がある。
-
-Browser DevToolsでも確認する。
+Login後、Chrome DevToolsで確認する。
 
 ```text
 Application
@@ -3809,51 +3954,20 @@ Application
 → accessToken
 ```
 
----
+### Read
 
-## 2. Read
+`/issues`を開き、DBに保存されているIssueが画面に表示されることを確認する。
 
-`/issues`へ遷移した時:
-
-```graphql
-query GetIssues {
-  issues {
-    id
-    title
-    description
-    status
-    owner {
-      id
-      name
-      email
-    }
-  }
-}
-```
-
-が呼び出される。
-
-画面にDBのIssue一覧が表示されるか確認する。
-
----
-
-## 3. Create
-
-Create Issue formに:
+### Create
 
 ```text
-Title:
-Frontend CRUD
-
-Description:
-Next.jsから作成
+Title: Frontend CRUD
+Description: Next.jsから作成
 ```
 
-入力してCreateを押す。
+Create後、画面に追加されることを確認する。
 
-画面にすぐ新しいIssueが追加される必要がある。
-
-PostgreSQLでも確認する。
+DBでも確認する。
 
 ```sql
 SELECT
@@ -3865,101 +3979,29 @@ FROM issues
 ORDER BY id;
 ```
 
----
+### Update
 
-## 4. Update
-
-作成したIssueの:
-
-```text
-Done
-```
-
-Buttonを押す。
-
-GraphQL:
-
-```graphql
-mutation UpdateIssue(
-  $id: Int!
-  $input: UpdateIssueInput!
-) {
-  updateIssue(
-    id: $id
-    input: $input
-  ) {
-    id
-    status
-  }
-}
-```
-
-variables:
-
-```json
-{
-  "id": 1,
-  "input": {
-    "status": "DONE"
-  }
-}
-```
-
-画面のstatusが:
+`Done`を押してStatusが以下のように変わることを確認する。
 
 ```text
 OPEN
 → DONE
 ```
 
-へ変わる必要がある。
+### Delete
 
----
+`Delete`後、Cardが画面から消え、DBからも削除されていることを確認する。
 
-## 5. Delete
-
-Deleteを押すと:
-
-```graphql
-mutation DeleteIssue(
-  $id: Int!
-) {
-  deleteIssue(
-    id: $id
-  )
-}
-```
-
-が実行される。
-
-成功すると対象cardが画面から消える必要がある。
-
----
-
-## 6. Logout
-
-Logout:
-
-```typescript
-localStorage.removeItem(
-  "accessToken",
-);
-```
-
-そして:
+### Logout
 
 ```text
-/issues
-→ /login
+localStorageからaccessToken削除
+→ /loginへ移動
 ```
-
-へ移動する。
-
-現在段階のJWTはaccess-token-onlyなので、これがlogoutとなる。
 
 ---
 
-# 9-9. Browser NetworkでGraphQL確認
+## Step 14.9 — Network TabでGraphQL確認
 
 Chrome DevTools:
 
@@ -3968,562 +4010,47 @@ Network
 → graphql
 ```
 
-Requestを確認する。
-
-Request Headers:
+確認する内容:
 
 ```text
-Authorization:
-Bearer eyJ...
+Request Headers
+Authorization: Bearer <JWT>
+
+Request Payload
+query
+variables
+
+Response
+data / errors
 ```
 
-Request Payload:
-
-```json
-{
-  "query": "...",
-  "variables": {
-    "input": {
-      "title": "Frontend CRUD"
-    }
-  }
-}
-```
-
-Response:
-
-```json
-{
-  "data": {
-    "createIssue": {
-      "id": 1,
-      "title": "Frontend CRUD"
-    }
-  }
-}
-```
-
-GraphiQLで確認していたGraphQL requestが実際のbrowser HTTP requestとしてどう送信されるか確認することが重要である。
+GraphiQLで実行していたQuery / MutationがBrowserからどのように送信されるかを確認する。
 
 ---
 
-# 9-10. 認証失敗も画面で確認
+## Step 14.10 — Authentication Failure確認
 
-DevTools → Application → Local Storageで:
-
-```text
-accessToken
-```
-
-を削除して`/issues`をReloadする。
-
-現在のfrontend codeではtokenがないため:
-
-```text
-/issues
-→ /login
-```
-
-へ移動する。
-
-次にtokenを任意に:
-
-```text
-abc
-```
-
-のように設定してAPIを呼ぶとbackend JWT検証が失敗する必要がある。
-
-この違いを理解する。
+DevToolsから`accessToken`を削除して`/issues`へ移動する。
 
 ```text
 Tokenなし
-→ frontendでlogin pageへ移動
-
-不正な Token
-→ backendでAuthentication失敗
-→ GraphQL errors
-→ frontend error message
+→ /loginへRedirect
 ```
 
----
-
-# 9-11. この段階であえて使用しないもの
-
-この段階では以下を追加しない。
+次に無効なTokenを保存してRequestする。
 
 ```text
-Apollo Client
-urql
-TanStack Query
-Zustand
-Redux
-React Hook Form
-Zod
-shadcn/ui
-MUI
+accessToken = abc
 ```
-
-理由:
 
 ```text
-現在の目標
-= Next.jsでGraphQL/JWT/CRUDのFlowを直接確認すること
+無効Token
+→ Backend JWT検証失敗
+→ GraphQL Error
+→ Frontend Error表示
 ```
 
-だからである。
-
-まず:
-
-```text
-useState
-useEffect
-fetch
-localStorage
-```
-
-だけで全体Flowを理解する。
-
-その後frontendを高度化する際に:
-
-```text
-GraphQL Client
-Server State Cache
-Form Validation
-UI Component Library
-```
-
-を追加すればよい。
-
----
-
-# 9段階 完了基準
-
-以下を自分の言葉で説明できる必要がある。
-
-```text
-Register Form
-  ↓
-register Mutation
-  ↓
-User作成 / password hash
-  ↓
-Login Form
-  ↓
-login Mutation
-  ↓
-JWT
-  ↓
-localStorage
-  ↓
-graphqlRequest()
-  ↓
-Authorization Header
-  ↓
-GraphQL Context
-  ↓
-current_user
-```
-
-さらにCRUD:
-
-```text
-Create
-→ createIssue Mutation
-
-Read
-→ issues Query
-
-Update
-→ updateIssue Mutation
-
-Delete
-→ deleteIssue Mutation
-```
-
-をBrowser画面とNetwork tabの両方で確認する。
-
-最後に:
-
-```text
-GraphiQLでは成功
-Next.jsでは失敗
-```
-
-する場合、Backend APIより先に:
-
-```text
-CORS
-Authorization header
-localStorage
-Client Component
-fetch
-frontend state
-```
-
-を確認できる必要がある。
-
----
-
-
-
-
-# 9段階拡張 — `.graphql` + GraphQL Code Generator
-
-ここまではGraphQLがHTTP Requestとしてどのように動くかを理解するため、Query文字列と`fetch`を直接扱った。
-
-次に、同じApplicationを**型安全なGraphQL開発フロー**へ移行する。
-
-```text
-.graphql operation
-  ↓
-GraphQL Code Generator
-  ↓
-TypeScript operation types
-  ↓
-TypedDocumentNode
-  ↓
-graphql-request
-```
-
-既存のbackend構造やGraphQL Schemaは変更しない。
-FrontendのGraphQL operation管理方法だけを改善する。
-
-## 1. Operation fileを分離する
-
-```text
-src/graphql/
-├── register.graphql
-├── login.graphql
-├── get-issues.graphql
-├── create-issue.graphql
-├── update-issue.graphql
-└── delete-issue.graphql
-```
-
-`src/graphql/register.graphql`:
-
-```graphql
-mutation Register($input: RegisterInput!) {
-  register(input: $input) {
-    accessToken
-    user {
-      id
-      name
-      email
-    }
-  }
-}
-```
-
-`src/graphql/login.graphql`:
-
-```graphql
-mutation Login($input: LoginInput!) {
-  login(input: $input) {
-    accessToken
-    user {
-      id
-      name
-      email
-    }
-  }
-}
-```
-
-`src/graphql/get-issues.graphql`:
-
-```graphql
-query GetIssues {
-  issues {
-    id
-    title
-    description
-    status
-    owner {
-      id
-      name
-      email
-    }
-  }
-}
-```
-
-残りのCreate / Update / Deleteも、9段階で直接書いたoperationをそのまま`.graphql`へ移す。
-
-## 2. Code Generator
-
-必要なpackageを追加する。
-
-```bash
-npm install graphql graphql-request
-npm install -D \
-  @graphql-codegen/cli \
-  @graphql-codegen/typescript-operations \
-  @graphql-codegen/typed-document-node
-```
-
-`codegen.ts`:
-
-```ts
-import type {
-  CodegenConfig,
-} from "@graphql-codegen/cli";
-
-const config: CodegenConfig = {
-  schema: "http://127.0.0.1:8000/graphql",
-  documents: "src/graphql/**/*.graphql",
-  generates: {
-    "src/generated/graphql.ts": {
-      plugins: [
-        "typescript-operations",
-        "typed-document-node",
-      ],
-    },
-  },
-};
-
-export default config;
-```
-
-`package.json` script:
-
-```json
-{
-  "scripts": {
-    "codegen": "graphql-codegen --config codegen.ts"
-  }
-}
-```
-
-Backendを起動した状態で実行する。
-
-```bash
-npm run codegen
-```
-
-生成物:
-
-```text
-src/generated/graphql.ts
-```
-
-このfileは手動編集しない。
-
-> `.graphql` fileは人が書く。Codegenが生成するのはTypeScript typeとTypedDocumentNodeである。
-
-## 3. `graphql-request` client
-
-`src/lib/graphql-client.ts`:
-
-```ts
-import {
-  GraphQLClient,
-} from "graphql-request";
-
-const GRAPHQL_URL =
-  process.env.NEXT_PUBLIC_GRAPHQL_URL
-  ?? "http://localhost:8000/graphql";
-
-
-export function getGraphQLClient() {
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem(
-          "accessToken",
-        )
-      : null;
-
-  return new GraphQLClient(
-    GRAPHQL_URL,
-    {
-      headers: token
-        ? {
-            Authorization:
-              `Bearer ${token}`,
-          }
-        : {},
-    },
-  );
-}
-```
-
-`getGraphQLClient()`はNetwork / Browser stateに依存するInfrastructure helperであり、Pure Functionとして扱わない。
-
-## 4. Registerをgenerated documentへ置き換える
-
-```ts
-import {
-  RegisterDocument,
-  type RegisterMutationVariables,
-} from "@/generated/graphql";
-import {
-  getGraphQLClient,
-} from "@/lib/graphql-client";
-
-const variables: RegisterMutationVariables = {
-  input: {
-    name,
-    email,
-    password,
-  },
-};
-
-const data = await getGraphQLClient().request(
-  RegisterDocument,
-  variables,
-);
-```
-
-手書きの`RegisterResponse` typeと`REGISTER`文字列は不要になる。
-
-Loginも同じように:
-
-```ts
-import {
-  LoginDocument,
-  type LoginMutationVariables,
-} from "@/generated/graphql";
-```
-
-へ置き換える。
-
-## 5. Issue CRUDもgenerated documentへ置き換える
-
-Issue画面ではinline GraphQL文字列を削除し、以下をimportする。
-
-```ts
-import {
-  CreateIssueDocument,
-  DeleteIssueDocument,
-  GetIssuesDocument,
-  UpdateIssueDocument,
-  type GetIssuesQuery,
-} from "@/generated/graphql";
-```
-
-UIで使うIssue typeもgenerated typeから取得する。
-
-```ts
-type Issue =
-  GetIssuesQuery["issues"][number];
-```
-
-これでBackend SchemaとFrontend typeがずれた場合、Codegen / TypeScriptの段階で気付きやすくなる。
-
-## 6. この段階の完成形
-
-```text
-Backend Strawberry Schema
-  ↓ introspection
-.graphql operation
-  ↓
-GraphQL Code Generator
-  ↓
-src/generated/graphql.ts
-  ↓
-graphql-request
-  ↓
-Next.js Component
-```
-
-Phase 2ではこのoperationとgenerated typeをそのまま利用し、Client側のServer State管理をApollo Clientへ拡張する。
-
----
-
-# 9段階拡張 — Frontend Testing
-
-Next.jsのCRUD画面まで完成した後、Frontend Testを追加する。
-
-## Test Stack
-
-```text
-Vitest
-→ Unit Test
-
-React Testing Library
-→ Component Test
-
-Playwright
-→ E2E Test
-```
-
-インストール:
-
-```bash
-npm install -D vitest jsdom \
-  @testing-library/react \
-  @testing-library/jest-dom \
-  @testing-library/user-event
-
-npm install -D @playwright/test
-npx playwright install
-```
-
-## Vitest
-
-まずは以下のようなUIから独立したLogicをTestする。
-
-```text
-GraphQL response変換
-utility
-validation
-状態変換関数
-```
-
-Frameworkを大量にMockするより、**Pure Functionを簡単にTestできる構造**を優先する。
-
-## React Testing Library
-
-Component内部の実装詳細より、Userから見える振る舞いをTestする。
-
-例:
-
-```text
-Create formに入力する
-→ Create Buttonを押す
-→ loading状態が表示される
-→ 成功後に入力値が初期化される
-```
-
-## Playwright E2E
-
-Phase 1の主要E2E Scenario:
-
-```text
-Register
-  ↓
-Login
-  ↓
-Issue一覧 確認
-  ↓
-Create
-  ↓
-Update
-  ↓
-Delete
-  ↓
-Logout
-```
-
-Playwrightでは実際のBrowser上で動作を確認する。
-
-## Phase 1 Test Pyramid
-
-```text
-        E2E
-     Playwright
-        ▲
-   Integration
- GraphQL / httpx
-        ▲
-      Unit
-pytest / Vitest
-```
-
-E2Eだけを大量に作るのではなく、
-高速なUnit TestとIntegration Testを中心にし、
-主要なUser FlowのみをE2Eで検証する。
+ここでFrontend側のRoute ControlとBackend側のAuthenticationは別の責務であることを確認する。
 
 ---
 
