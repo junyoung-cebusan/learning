@@ -23,7 +23,8 @@ PostgreSQL
 Authentication:
 
 ```text
-Login
+User Registration
+→ Login
 → JWT
 → Authorization Header
 → GraphQL Context
@@ -514,7 +515,12 @@ Create:
 
 ```graphql
 mutation {
-  createIssue(input: { title: "First issue", description: "PostgreSQL CRUD" }) {
+  createIssue(
+    input: {
+      title: "First issue"
+      description: "PostgreSQL CRUD"
+    }
+  ) {
     id
     title
     status
@@ -538,7 +544,12 @@ Update:
 
 ```graphql
 mutation {
-  updateIssue(id: 1, input: { status: "DONE" }) {
+  updateIssue(
+    id: 1
+    input: {
+      status: "DONE"
+    }
+  ) {
     id
     status
   }
@@ -681,6 +692,146 @@ class GraphQLContext(BaseContext):
             for key in keys
         ]
 ```
+
+---
+
+# Step 11.5 — User Registration
+
+Loginより先に、UserをApplicationから登録できるようにする。
+
+Phase 1では次の最小構成だけを扱う。
+
+```text
+name / email / password
+→ email重複確認
+→ password hash
+→ User保存
+→ Login可能になる
+```
+
+Email Verification / Password Reset / Refresh Token / OAuth / OIDCなどはPhase 5で扱う。
+
+## Password Hash
+
+Step 12でも使用する認証関連Packageを先にInstallする。
+
+```bash
+uv add pyjwt passlib bcrypt
+```
+
+`src/app/graphql/schemas/user.py`:
+
+```python
+import strawberry
+
+
+@strawberry.type
+class User:
+    id: int
+    name: str
+    email: str
+
+
+@strawberry.input
+class RegisterInput:
+    name: str
+    email: str
+    password: str
+```
+
+`src/app/services/user_service.py`:
+
+```python
+from passlib.context import CryptContext
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.graphql.schemas.user import (
+    RegisterInput,
+    User,
+)
+from app.models.user import UserModel
+
+
+password_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+)
+
+
+async def register_user(
+    input: RegisterInput,
+) -> User:
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(UserModel).where(
+                UserModel.email == input.email
+            )
+        )
+
+        if result.scalar_one_or_none() is not None:
+            raise ValueError(
+                "Email already registered"
+            )
+
+        model = UserModel(
+            name=input.name,
+            email=input.email,
+            password_hash=password_context.hash(
+                input.password
+            ),
+        )
+
+        session.add(model)
+        await session.commit()
+        await session.refresh(model)
+
+        return User(
+            id=model.id,
+            name=model.name,
+            email=model.email,
+        )
+```
+
+Mutation:
+
+```python
+from app import user_service
+from app.graphql.schemas.user import (
+    RegisterInput,
+    User,
+)
+
+
+@strawberry.mutation
+async def register(
+    self,
+    input: RegisterInput,
+) -> User:
+    return await user_service.register_user(
+        input
+    )
+```
+
+GraphiQLで確認する。
+
+```graphql
+mutation {
+  register(
+    input: {
+      name: "Hwang"
+      email: "hwang@example.com"
+      password: "password123"
+    }
+  ) {
+    id
+    name
+    email
+  }
+}
+```
+
+同じEmailでもう一度登録し、重複Errorになることも確認する。
 
 ---
 
@@ -954,6 +1105,7 @@ frontend/
 └── src/
     ├── app/
     ├── graphql/
+    │   ├── register.graphql
     │   ├── login.graphql
     │   ├── issues.graphql
     │   ├── create-issue.graphql
@@ -967,11 +1119,31 @@ frontend/
 
 ### GraphQL Documents
 
+`src/graphql/register.graphql`:
+
+```graphql
+mutation Register(
+  $input: RegisterInput!
+) {
+  register(
+    input: $input
+  ) {
+    id
+    name
+    email
+  }
+}
+```
+
 `src/graphql/login.graphql`:
 
 ```graphql
-mutation Login($input: LoginInput!) {
-  login(input: $input) {
+mutation Login(
+  $input: LoginInput!
+) {
+  login(
+    input: $input
+  ) {
     accessToken
 
     user {
@@ -1005,8 +1177,12 @@ query GetIssues {
 `src/graphql/create-issue.graphql`:
 
 ```graphql
-mutation CreateIssue($input: CreateIssueInput!) {
-  createIssue(input: $input) {
+mutation CreateIssue(
+  $input: CreateIssueInput!
+) {
+  createIssue(
+    input: $input
+  ) {
     id
     title
     description
@@ -1024,8 +1200,14 @@ mutation CreateIssue($input: CreateIssueInput!) {
 `src/graphql/update-issue.graphql`:
 
 ```graphql
-mutation UpdateIssue($id: Int!, $input: UpdateIssueInput!) {
-  updateIssue(id: $id, input: $input) {
+mutation UpdateIssue(
+  $id: Int!
+  $input: UpdateIssueInput!
+) {
+  updateIssue(
+    id: $id
+    input: $input
+  ) {
     id
     title
     description
@@ -1037,8 +1219,12 @@ mutation UpdateIssue($id: Int!, $input: UpdateIssueInput!) {
 `src/graphql/delete-issue.graphql`:
 
 ```graphql
-mutation DeleteIssue($id: Int!) {
-  deleteIssue(id: $id)
+mutation DeleteIssue(
+  $id: Int!
+) {
+  deleteIssue(
+    id: $id
+  )
 }
 ```
 
@@ -1047,19 +1233,30 @@ mutation DeleteIssue($id: Int!) {
 `frontend/codegen.ts`:
 
 ```typescript
-import type { CodegenConfig } from "@graphql-codegen/cli";
+import type {
+  CodegenConfig,
+} from "@graphql-codegen/cli";
 
-const config: CodegenConfig = {
-  schema: "http://localhost:8000/graphql",
 
-  documents: "src/graphql/**/*.graphql",
+const config:
+  CodegenConfig = {
+    schema:
+      "http://localhost:8000/graphql",
 
-  generates: {
-    "src/generated/graphql.ts": {
-      plugins: ["typescript-operations", "typed-document-node"],
+    documents:
+      "src/graphql/**/*.graphql",
+
+    generates: {
+      "src/generated/graphql.ts": {
+        plugins: [
+          "typescript",
+          "typescript-operations",
+          "typed-document-node",
+        ],
+      },
     },
-  },
-};
+  };
+
 
 export default config;
 ```
@@ -1083,6 +1280,9 @@ npm run codegen
 生成例:
 
 ```text
+RegisterDocument
+RegisterMutation
+RegisterMutationVariables
 LoginDocument
 LoginMutation
 LoginMutationVariables
@@ -1122,27 +1322,40 @@ CreateIssueMutationVariables
 そのため`graphql-request`に渡すと、ResponseとVariablesの型を自動的に推論できる。
 
 ```typescript
-import { LoginDocument } from "@/generated/graphql";
+import {
+  LoginDocument,
+} from "@/generated/graphql";
 
-import { getGraphQLClient } from "@/lib/graphql-client";
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
 
-const data = await getGraphQLClient().request(LoginDocument, {
-  input: {
-    email,
-    password,
-  },
-});
 
-localStorage.setItem("accessToken", data.login.accessToken);
+const data =
+  await getGraphQLClient().request(
+    LoginDocument,
+    {
+      input: {
+        email,
+        password,
+      },
+    },
+  );
+
+
+localStorage.setItem(
+  "accessToken",
+  data.login.accessToken,
+);
 ```
 
 ここでは`data`に手動で型を書く必要がない。
 
 ```typescript
-data.login.accessToken;
-data.login.user.id;
-data.login.user.name;
-data.login.user.email;
+data.login.accessToken
+data.login.user.id
+data.login.user.name
+data.login.user.email
 ```
 
 がCodegenによって型付けされる。
@@ -1150,7 +1363,7 @@ data.login.user.email;
 存在しないFieldを書いた場合:
 
 ```typescript
-data.login.user.username;
+data.login.user.username
 ```
 
 Schema / Operationに`username`が存在しなければTypeScript Errorになる。
@@ -1162,16 +1375,25 @@ Schema / Operationに`username`が存在しなければTypeScript Errorになる
 必要であれば生成されたVariables Typeを明示的に利用できる。
 
 ```typescript
-import type { LoginMutationVariables } from "@/generated/graphql";
+import type {
+  LoginMutationVariables,
+} from "@/generated/graphql";
 
-const variables: LoginMutationVariables = {
-  input: {
-    email,
-    password,
-  },
-};
 
-const data = await getGraphQLClient().request(LoginDocument, variables);
+const variables:
+  LoginMutationVariables = {
+    input: {
+      email,
+      password,
+    },
+  };
+
+
+const data =
+  await getGraphQLClient().request(
+    LoginDocument,
+    variables,
+  );
 ```
 
 ただし通常は`LoginDocument`からVariables Typeが推論されるため、毎回明示的に書く必要はない。
@@ -1183,15 +1405,22 @@ const data = await getGraphQLClient().request(LoginDocument, variables);
 Issue型をFrontend側で手書きしない。
 
 ```typescript
-import type { GetIssuesQuery } from "@/generated/graphql";
+import type {
+  GetIssuesQuery,
+} from "@/generated/graphql";
 
-type Issue = GetIssuesQuery["issues"][number];
+
+type Issue =
+  GetIssuesQuery["issues"][number];
 ```
 
 これにより:
 
 ```typescript
-const [issues, setIssues] = useState<Issue[]>([]);
+const [
+  issues,
+  setIssues,
+] = useState<Issue[]>([]);
 ```
 
 の`Issue`型がGraphQL Operationと同期する。
@@ -1242,21 +1471,35 @@ React UI
 `src/lib/graphql-client.ts`:
 
 ```typescript
-import { GraphQLClient } from "graphql-request";
+import {
+  GraphQLClient,
+} from "graphql-request";
 
-const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_URL!;
+
+const endpoint =
+  process.env
+    .NEXT_PUBLIC_GRAPHQL_URL!;
+
 
 export function getGraphQLClient() {
   const token =
-    typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    typeof window !== "undefined"
+      ? localStorage.getItem(
+          "accessToken",
+        )
+      : null;
 
-  return new GraphQLClient(endpoint, {
-    headers: token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : {},
-  });
+  return new GraphQLClient(
+    endpoint,
+    {
+      headers: token
+        ? {
+            Authorization:
+              `Bearer ${token}`,
+          }
+        : {},
+    },
+  );
 }
 ```
 
@@ -1264,13 +1507,13 @@ export function getGraphQLClient() {
 Phase 2でApollo Clientを導入し、GraphQL Cacheを本格的に学ぶ。
 
 ---
-
 ## Step 14.5 — Root Page
 
 `frontend/src/app/page.tsx`:
 
 ```tsx
 import Link from "next/link";
+
 
 export default function Home() {
   return (
@@ -1348,6 +1591,185 @@ export default function Home() {
 
 ---
 
+## Step 14.5.5 — Registration Page
+
+この画面で次のFlowを確認する。
+
+```text
+Name / Email / Password入力
+→ register Mutation
+→ User作成
+→ /loginへ移動
+```
+
+`frontend/src/app/register/page.tsx`:
+
+```tsx
+"use client";
+
+import {
+  FormEvent,
+  useState,
+} from "react";
+
+import {
+  useRouter,
+} from "next/navigation";
+
+import {
+  RegisterDocument,
+} from "@/generated/graphql";
+
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
+
+
+export default function RegisterPage() {
+  const router = useRouter();
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    setError("");
+    setLoading(true);
+
+    try {
+      const client = getGraphQLClient();
+
+      await client.request(
+        RegisterDocument,
+        {
+          input: {
+            name,
+            email,
+            password,
+          },
+        },
+      );
+
+      router.push("/login");
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+
+  return (
+    <main
+      className="mx-auto flex min-h-screen max-w-md items-center p-6"
+    >
+      <form
+        onSubmit={handleSubmit}
+        className="w-full space-y-4 rounded-lg border border-gray-200 p-6"
+      >
+        <h1 className="text-2xl font-bold">
+          Register
+        </h1>
+
+        <div>
+          <label
+            htmlFor="name"
+            className="mb-1 block text-sm font-medium"
+          >
+            Name
+          </label>
+          <input
+            id="name"
+            value={name}
+            onChange={(event) =>
+              setName(event.target.value)
+            }
+            className="w-full rounded border border-gray-300 px-3 py-2"
+            required
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="email"
+            className="mb-1 block text-sm font-medium"
+          >
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(event) =>
+              setEmail(event.target.value)
+            }
+            className="w-full rounded border border-gray-300 px-3 py-2"
+            required
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="password"
+            className="mb-1 block text-sm font-medium"
+          >
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(event) =>
+              setPassword(event.target.value)
+            }
+            className="w-full rounded border border-gray-300 px-3 py-2"
+            required
+          />
+        </div>
+
+        {error && (
+          <p className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+        >
+          {loading
+            ? "Registering..."
+            : "Register"}
+        </button>
+      </form>
+    </main>
+  );
+}
+```
+
+確認する。
+
+```text
+1. /registerからUserを作成できる
+2. 登録後/loginへ移動する
+3. 登録したEmail / PasswordでLoginできる
+4. 同じEmailでは登録できない
+```
+
+---
+
 ## Step 14.6 — Login Page
 
 この画面で次のFlowを確認する。
@@ -1365,54 +1787,96 @@ Email / Password入力
 ```tsx
 "use client";
 
-import { FormEvent, useState } from "react";
+import {
+  FormEvent,
+  useState,
+} from "react";
 
-import { useRouter } from "next/navigation";
+import {
+  useRouter,
+} from "next/navigation";
 
-import { LoginDocument } from "@/generated/graphql";
+import {
+  LoginDocument,
+} from "@/generated/graphql";
 
-import { getGraphQLClient } from "@/lib/graphql-client";
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
+
 
 export default function LoginPage() {
   const router = useRouter();
 
-  const [email, setEmail] = useState("");
+  const [
+    email,
+    setEmail,
+  ] = useState("");
 
-  const [password, setPassword] = useState("");
+  const [
+    password,
+    setPassword,
+  ] = useState("");
 
-  const [error, setError] = useState("");
+  const [
+    error,
+    setError,
+  ] = useState("");
 
-  const [loading, setLoading] = useState(false);
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
     setError("");
     setLoading(true);
 
     try {
-      const client = getGraphQLClient();
+      const client =
+        getGraphQLClient();
 
-      const data = await client.request(LoginDocument, {
-        input: {
-          email,
-          password,
-        },
-      });
+      const data =
+        await client.request(
+          LoginDocument,
+          {
+            input: {
+              email,
+              password,
+            },
+          },
+        );
 
       if (!data.login) {
-        throw new Error("Login failed");
+        throw new Error(
+          "Login failed",
+        );
       }
 
-      localStorage.setItem("accessToken", data.login.accessToken);
+      localStorage.setItem(
+        "accessToken",
+        data.login.accessToken,
+      );
 
-      router.push("/issues");
+      router.push(
+        "/issues",
+      );
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unknown error");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error",
+      );
     } finally {
       setLoading(false);
     }
   }
+
 
   return (
     <main
@@ -1426,7 +1890,9 @@ export default function LoginPage() {
       "
     >
       <form
-        onSubmit={handleSubmit}
+        onSubmit={
+          handleSubmit
+        }
         className="
           w-full
           space-y-4
@@ -1472,7 +1938,12 @@ export default function LoginPage() {
           <input
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={
+              (event) =>
+                setEmail(
+                  event.target.value,
+                )
+            }
             required
             className="
               w-full
@@ -1500,7 +1971,12 @@ export default function LoginPage() {
           <input
             type="password"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={
+              (event) =>
+                setPassword(
+                  event.target.value,
+                )
+            }
             required
             className="
               w-full
@@ -1540,7 +2016,11 @@ export default function LoginPage() {
             disabled:opacity-50
           "
         >
-          {loading ? "Logging in..." : "Login"}
+          {
+            loading
+              ? "Logging in..."
+              : "Login"
+          }
         </button>
       </form>
     </main>
@@ -1577,9 +2057,16 @@ LOGOUT → Token削除
 ```tsx
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
-import { useRouter } from "next/navigation";
+import {
+  useRouter,
+} from "next/navigation";
 
 import {
   CreateIssueDocument,
@@ -1589,54 +2076,107 @@ import {
   type GetIssuesQuery,
 } from "@/generated/graphql";
 
-import { getGraphQLClient } from "@/lib/graphql-client";
+import {
+  getGraphQLClient,
+} from "@/lib/graphql-client";
 
-type Issue = GetIssuesQuery["issues"][number];
+
+type Issue =
+  GetIssuesQuery["issues"][number];
+
 
 export default function IssuesPage() {
   const router = useRouter();
 
-  const [issues, setIssues] = useState<Issue[]>([]);
+  const [
+    issues,
+    setIssues,
+  ] = useState<Issue[]>([]);
 
-  const [title, setTitle] = useState("");
+  const [
+    title,
+    setTitle,
+  ] = useState("");
 
-  const [description, setDescription] = useState("");
+  const [
+    description,
+    setDescription,
+  ] = useState("");
 
-  const [loading, setLoading] = useState(true);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  const [saving, setSaving] = useState(false);
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
 
-  const [error, setError] = useState("");
+  const [
+    error,
+    setError,
+  ] = useState("");
 
-  const loadIssues = useCallback(async () => {
-    setError("");
 
-    try {
-      const client = getGraphQLClient();
+  const loadIssues =
+    useCallback(
+      async () => {
+        setError("");
 
-      const data = await client.request(GetIssuesDocument);
+        try {
+          const client =
+            getGraphQLClient();
 
-      setIssues(data.issues);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+          const data =
+            await client.request(
+              GetIssuesDocument,
+            );
 
-  useEffect(() => {
-    const token = localStorage.getItem("accessToken");
+          setIssues(
+            data.issues,
+          );
+        } catch (error) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Unknown error",
+          );
+        } finally {
+          setLoading(false);
+        }
+      },
+      [],
+    );
 
-    if (!token) {
-      router.replace("/login");
 
-      return;
-    }
+  useEffect(
+    () => {
+      const token =
+        localStorage.getItem(
+          "accessToken",
+        );
 
-    void loadIssues();
-  }, [loadIssues, router]);
+      if (!token) {
+        router.replace(
+          "/login",
+        );
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+        return;
+      }
+
+      void loadIssues();
+    },
+    [
+      loadIssues,
+      router,
+    ],
+  );
+
+
+  async function handleCreate(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
     if (!title.trim()) {
@@ -1647,78 +2187,130 @@ export default function IssuesPage() {
     setError("");
 
     try {
-      const data = await getGraphQLClient().request(CreateIssueDocument, {
-        input: {
-          title,
-          description: description || null,
-        },
-      });
+      const data =
+        await getGraphQLClient().request(
+          CreateIssueDocument,
+          {
+            input: {
+              title,
+              description:
+                description || null,
+            },
+          },
+        );
 
-      setIssues((current) => [...current, data.createIssue]);
+      setIssues(
+        (current) => [
+          ...current,
+          data.createIssue,
+        ],
+      );
 
       setTitle("");
       setDescription("");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unknown error");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error",
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  async function markDone(issueId: number) {
+
+  async function markDone(
+    issueId: number,
+  ) {
     setError("");
 
     try {
-      const data = await getGraphQLClient().request(UpdateIssueDocument, {
-        id: issueId,
+      const data =
+        await getGraphQLClient().request(
+          UpdateIssueDocument,
+          {
+            id: issueId,
 
-        input: {
-          status: "DONE",
-        },
-      });
+            input: {
+              status: "DONE",
+            },
+          },
+        );
 
       if (!data.updateIssue) {
         return;
       }
 
-      setIssues((current) =>
-        current.map((issue) =>
-          issue.id === issueId
-            ? {
-                ...issue,
-                status: data.updateIssue!.status,
-              }
-            : issue,
-        ),
+      setIssues(
+        (current) =>
+          current.map(
+            (issue) =>
+              issue.id === issueId
+                ? {
+                    ...issue,
+                    status:
+                      data.updateIssue!
+                        .status,
+                  }
+                : issue,
+          ),
       );
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unknown error");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error",
+      );
     }
   }
 
-  async function removeIssue(issueId: number) {
+
+  async function removeIssue(
+    issueId: number,
+  ) {
     setError("");
 
     try {
-      const data = await getGraphQLClient().request(DeleteIssueDocument, {
-        id: issueId,
-      });
+      const data =
+        await getGraphQLClient().request(
+          DeleteIssueDocument,
+          {
+            id: issueId,
+          },
+        );
 
       if (!data.deleteIssue) {
         return;
       }
 
-      setIssues((current) => current.filter((issue) => issue.id !== issueId));
+      setIssues(
+        (current) =>
+          current.filter(
+            (issue) =>
+              issue.id !== issueId,
+          ),
+      );
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unknown error");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error",
+      );
     }
   }
 
-  function logout() {
-    localStorage.removeItem("accessToken");
 
-    router.replace("/login");
+  function logout() {
+    localStorage.removeItem(
+      "accessToken",
+    );
+
+    router.replace(
+      "/login",
+    );
   }
+
 
   return (
     <main
@@ -1774,7 +2366,9 @@ export default function IssuesPage() {
       </header>
 
       <form
-        onSubmit={handleCreate}
+        onSubmit={
+          handleCreate
+        }
         className="
           space-y-3
           rounded-lg
@@ -1794,7 +2388,12 @@ export default function IssuesPage() {
 
         <input
           value={title}
-          onChange={(event) => setTitle(event.target.value)}
+          onChange={
+            (event) =>
+              setTitle(
+                event.target.value,
+              )
+          }
           placeholder="Title"
           className="
             w-full
@@ -1808,7 +2407,12 @@ export default function IssuesPage() {
 
         <textarea
           value={description}
-          onChange={(event) => setDescription(event.target.value)}
+          onChange={
+            (event) =>
+              setDescription(
+                event.target.value,
+              )
+          }
           placeholder="Description"
           className="
             min-h-24
@@ -1833,7 +2437,11 @@ export default function IssuesPage() {
             disabled:opacity-50
           "
         >
-          {saving ? "Creating..." : "Create"}
+          {
+            saving
+              ? "Creating..."
+              : "Create"
+          }
         </button>
       </form>
 
@@ -1852,7 +2460,9 @@ export default function IssuesPage() {
       )}
 
       {loading ? (
-        <p>Loading...</p>
+        <p>
+          Loading...
+        </p>
       ) : (
         <section
           className="
@@ -1869,88 +2479,99 @@ export default function IssuesPage() {
             </p>
           )}
 
-          {issues.map((issue) => (
-            <article
-              key={issue.id}
-              className="
+          {issues.map(
+            (issue) => (
+              <article
+                key={issue.id}
+                className="
                   rounded-lg
                   border
                   border-gray-200
                   p-4
                 "
-            >
-              <div
-                className="
+              >
+                <div
+                  className="
                     flex
                     items-start
                     justify-between
                     gap-4
                   "
-              >
-                <div>
-                  <div
-                    className="
+                >
+                  <div>
+                    <div
+                      className="
                         flex
                         items-center
                         gap-2
                       "
-                  >
-                    <h2
-                      className="
+                    >
+                      <h2
+                        className="
                           font-semibold
                         "
-                    >
-                      {issue.title}
-                    </h2>
+                      >
+                        {issue.title}
+                      </h2>
 
-                    <span
-                      className="
+                      <span
+                        className="
                           rounded
                           bg-gray-100
                           px-2
                           py-1
                           text-xs
                         "
-                    >
-                      {issue.status}
-                    </span>
-                  </div>
+                      >
+                        {issue.status}
+                      </span>
+                    </div>
 
-                  {issue.description && (
-                    <p
-                      className="
+                    {issue.description && (
+                      <p
+                        className="
                           mt-2
                           text-sm
                           text-gray-600
                         "
-                    >
-                      {issue.description}
-                    </p>
-                  )}
+                      >
+                        {
+                          issue.description
+                        }
+                      </p>
+                    )}
 
-                  <p
-                    className="
+                    <p
+                      className="
                         mt-2
                         text-xs
                         text-gray-400
                       "
-                  >
-                    Owner: {issue.owner.name}
-                  </p>
-                </div>
+                    >
+                      Owner:
+                      {" "}
+                      {issue.owner.name}
+                    </p>
+                  </div>
 
-                <div
-                  className="
+                  <div
+                    className="
                       flex
                       shrink-0
                       gap-2
                     "
-                >
-                  {issue.status !== "DONE" && (
-                    <button
-                      type="button"
-                      onClick={() => void markDone(issue.id)}
-                      className="
+                  >
+                    {issue.status !==
+                      "DONE" && (
+                      <button
+                        type="button"
+                        onClick={
+                          () =>
+                            void markDone(
+                              issue.id,
+                            )
+                        }
+                        className="
                           rounded
                           border
                           border-gray-300
@@ -1958,15 +2579,20 @@ export default function IssuesPage() {
                           py-1
                           text-sm
                         "
-                    >
-                      Done
-                    </button>
-                  )}
+                      >
+                        Done
+                      </button>
+                    )}
 
-                  <button
-                    type="button"
-                    onClick={() => void removeIssue(issue.id)}
-                    className="
+                    <button
+                      type="button"
+                      onClick={
+                        () =>
+                          void removeIssue(
+                            issue.id,
+                          )
+                      }
+                      className="
                         rounded
                         bg-red-600
                         px-3
@@ -1974,13 +2600,14 @@ export default function IssuesPage() {
                         text-sm
                         text-white
                       "
-                  >
-                    Delete
-                  </button>
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            ),
+          )}
         </section>
       )}
     </main>
@@ -2141,7 +2768,6 @@ Frontendにも簡単なFilter / Search UIを追加し、Network TabでGraphQL Va
 大量DataでのPagination / Infinite Scroll / VirtualizationはPhase 2で深掘りする。
 
 ---
-
 # Step 17 — Backend Testing
 
 完成したBackend実装を対象にTestを追加する。
@@ -2244,35 +2870,64 @@ npm install -D \
 Vitest:
 
 ```typescript
-export function normalizeTitle(title: string) {
+export function normalizeTitle(
+  title: string,
+) {
   return title.trim();
 }
 ```
 
 ```typescript
-import { expect, test } from "vitest";
+import {
+  expect,
+  test,
+} from "vitest";
 
-import { normalizeTitle } from "./issue";
+import {
+  normalizeTitle,
+} from "./issue";
 
-test("trims title", () => {
-  expect(normalizeTitle("  Issue  ")).toBe("Issue");
-});
+
+test(
+  "trims title",
+  () => {
+    expect(
+      normalizeTitle(
+        "  Issue  ",
+      ),
+    ).toBe("Issue");
+  },
+);
 ```
 
 React Testing Library:
 
 ```tsx
-test("user can enter title", async () => {
-  const user = userEvent.setup();
+test(
+  "user can enter title",
+  async () => {
+    const user =
+      userEvent.setup();
 
-  render(<CreateIssueForm />);
+    render(
+      <CreateIssueForm />
+    );
 
-  const input = screen.getByPlaceholderText("Title");
+    const input =
+      screen.getByPlaceholderText(
+        "Title",
+      );
 
-  await user.type(input, "New Issue");
+    await user.type(
+      input,
+      "New Issue",
+    );
 
-  expect(input).toHaveValue("New Issue");
-});
+    expect(input).toHaveValue(
+      "New Issue"
+    );
+  },
+);
 ```
 
 ---
@@ -2289,7 +2944,8 @@ npx playwright install
 Scenario:
 
 ```text
-Login
+Register
+→ Login
 → Issue List
 → Create
 → Update
@@ -2300,29 +2956,58 @@ Login
 Example:
 
 ```typescript
-test("issue CRUD flow", async ({ page }) => {
-  await page.goto("/login");
+test(
+  "issue CRUD flow",
+  async ({ page }) => {
+    await page.goto(
+      "/login"
+    );
 
-  await page.getByLabel("Email").fill("hwang@example.com");
+    await page
+      .getByLabel("Email")
+      .fill(
+        "hwang@example.com"
+      );
 
-  await page.getByLabel("Password").fill("password123");
+    await page
+      .getByLabel("Password")
+      .fill(
+        "password123"
+      );
 
-  await page
-    .getByRole("button", {
-      name: "Login",
-    })
-    .click();
+    await page
+      .getByRole(
+        "button",
+        {
+          name: "Login",
+        },
+      )
+      .click();
 
-  await page.getByPlaceholder("Title").fill("E2E Issue");
+    await page
+      .getByPlaceholder(
+        "Title"
+      )
+      .fill(
+        "E2E Issue"
+      );
 
-  await page
-    .getByRole("button", {
-      name: "Create",
-    })
-    .click();
+    await page
+      .getByRole(
+        "button",
+        {
+          name: "Create",
+        },
+      )
+      .click();
 
-  await expect(page.getByText("E2E Issue")).toBeVisible();
-});
+    await expect(
+      page.getByText(
+        "E2E Issue"
+      )
+    ).toBeVisible();
+  },
+);
 ```
 
 ---
@@ -2370,11 +3055,12 @@ VPC / Terraform / CI/CD / RollbackはPhase 4で扱う。
 [ ] Issue CRUD
 [ ] SQL / Index / Transaction基礎
 [ ] User Relation
+[ ] User Registration
 [ ] DataLoader
 [ ] JWT
 [ ] GraphQL Context
 [ ] Next.js + Tailwind
-[ ] Login / CRUD / Logout UI
+[ ] Registration / Login / CRUD / Logout UI
 [ ] Filter / Search / Cursor
 [ ] pytest / pytest-asyncio / httpx
 [ ] Vitest
