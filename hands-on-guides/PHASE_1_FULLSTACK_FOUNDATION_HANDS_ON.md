@@ -2776,7 +2776,7 @@ const endpoint =
     .NEXT_PUBLIC_GRAPHQL_URL!;
 
 
-export function getGraphQLClient() {
+export const getGraphQLClient = () => {
   const token =
     typeof window !== "undefined"
       ? localStorage.getItem(
@@ -2795,7 +2795,7 @@ export function getGraphQLClient() {
         : {},
     },
   );
-}
+};
 ```
 
 この段階ではServer State Cacheはまだ追加しない。
@@ -2810,7 +2810,7 @@ Phase 2でApollo Clientを導入し、GraphQL Cacheを本格的に学ぶ。
 import Link from "next/link";
 
 
-export default function Home() {
+const Home = () => {
   return (
     <main
       className="
@@ -2892,7 +2892,9 @@ export default function Home() {
       </div>
     </main>
   );
-}
+};
+
+export default Home;
 ```
 
 `/login`、`/register`、`/issues`へ移動できることを確認する。
@@ -2936,7 +2938,7 @@ import {
 } from "@/lib/graphql-client";
 
 
-export default function RegisterPage() {
+const RegisterPage = () => {
   const router = useRouter();
 
   const [name, setName] = useState("");
@@ -2946,7 +2948,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
 
-  async function handleSubmit(
+  const handleSubmit = async (
     event: FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
@@ -2983,7 +2985,7 @@ export default function RegisterPage() {
     } finally {
       setLoading(false);
     }
-  }
+  };
 
 
   return (
@@ -3082,7 +3084,9 @@ export default function RegisterPage() {
       </form>
     </main>
   );
-}
+};
+
+export default RegisterPage;
 ```
 
 確認する。
@@ -3135,7 +3139,7 @@ import {
 } from "@/lib/graphql-client";
 
 
-export default function LoginPage() {
+const LoginPage = () => {
   const router = useRouter();
 
   const [
@@ -3159,7 +3163,7 @@ export default function LoginPage() {
   ] = useState(false);
 
 
-  async function handleSubmit(
+  const handleSubmit = async (
     event: FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
@@ -3205,7 +3209,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }
+  };
 
 
   return (
@@ -3365,7 +3369,9 @@ export default function LoginPage() {
       </form>
     </main>
   );
-}
+};
+
+export default LoginPage;
 ```
 
 確認ポイント:
@@ -3426,7 +3432,7 @@ type Issue =
   GetIssuesQuery["issues"][number];
 
 
-export default function IssuesPage() {
+const IssuesPage = () => {
   const router = useRouter();
 
   const [
@@ -3515,7 +3521,7 @@ export default function IssuesPage() {
   );
 
 
-  async function handleCreate(
+  const handleCreate = async (
     event: FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
@@ -3558,10 +3564,10 @@ export default function IssuesPage() {
     } finally {
       setSaving(false);
     }
-  }
+  };
 
 
-  async function markDone(
+  const markDone = async (
     issueId: number,
   ) {
     setError("");
@@ -3604,10 +3610,10 @@ export default function IssuesPage() {
           : "Unknown error",
       );
     }
-  }
+  };
 
 
-  async function removeIssue(
+  const removeIssue = async (
     issueId: number,
   ) {
     setError("");
@@ -3639,10 +3645,10 @@ export default function IssuesPage() {
           : "Unknown error",
       );
     }
-  }
+  };
 
 
-  function logout() {
+  const logout = () => {
     localStorage.removeItem(
       "accessToken",
     );
@@ -3650,7 +3656,7 @@ export default function IssuesPage() {
     router.replace(
       "/login",
     );
-  }
+  };
 
 
   return (
@@ -3953,7 +3959,9 @@ export default function IssuesPage() {
       )}
     </main>
   );
-}
+};
+
+export default IssuesPage;
 ```
 
 このStepではUI Libraryを追加せず、Tailwindだけで最低限の画面を作る。
