@@ -3092,7 +3092,7 @@ const RegisterPage = () => {
 
   const handleSubmit = async (
     event: FormEvent<HTMLFormElement>,
-  ) {
+  ) => {
     event.preventDefault();
 
     setError("");
@@ -3307,7 +3307,7 @@ const LoginPage = () => {
 
   const handleSubmit = async (
     event: FormEvent<HTMLFormElement>,
-  ) {
+  ) => {
     event.preventDefault();
 
     setError("");
@@ -3665,7 +3665,7 @@ const IssuesPage = () => {
 
   const handleCreate = async (
     event: FormEvent<HTMLFormElement>,
-  ) {
+  ) => {
     event.preventDefault();
 
     if (!title.trim()) {
@@ -3711,7 +3711,7 @@ const IssuesPage = () => {
 
   const markDone = async (
     issueId: number,
-  ) {
+  ) => {
     setError("");
 
     try {
@@ -3759,7 +3759,7 @@ const IssuesPage = () => {
 
   const removeIssue = async (
     issueId: number,
-  ) {
+  ) => {
     setError("");
 
     try {
