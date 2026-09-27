@@ -39,6 +39,21 @@ fullstack-relearn/
 │               ├── issues.py
 │               └── auth.py
 ├── frontend/
+│   ├── codegen.ts
+│   └── src/
+│       ├── app/
+│       │   ├── page.tsx
+│       │   ├── register/
+│       │   │   └── page.tsx
+│       │   ├── login/
+│       │   │   └── page.tsx
+│       │   └── issues/
+│       │       └── page.tsx
+│       ├── graphql/
+│       ├── generated/
+│       │   └── graphql.ts
+│       └── lib/
+│           └── graphql-client.ts
 ├── docker-compose.yml
 └── .github/
     └── workflows/
@@ -196,6 +211,14 @@ graphql_app = GraphQLRouter(
 )
 
 app = FastAPI()
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+    }
+
 
 app.include_router(
     graphql_app,
@@ -683,6 +706,8 @@ uv run pytest tests/test_issue_service.py -q
 # 5段階 — PostgreSQL + SQLAlchemy Async
 
 > **この段階から最後までAsync SQLAlchemyのみを使用する。**
+> 4段階拡張の`tests/test_issue_service.py`はMemory CRUD専用Testであり、この段階でService実装をAsync DB版へ置き換えると対象実装が消える。
+> そのため学習Checkpointとして確認後に削除し、8段階拡張のGraphQL Integration Testへ置き換える。
 
 ## PostgreSQL
 
@@ -714,6 +739,8 @@ docker compose up -d
 ## `database.py`
 
 ```python
+import os
+
 from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
@@ -721,9 +748,9 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 
-DATABASE_URL = (
-    "postgresql+asyncpg://"
-    "app:password@localhost:5432/app"
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://app:password@localhost:5432/app",
 )
 
 
@@ -896,6 +923,14 @@ graphql_app = GraphQLRouter(
 app = FastAPI(
     lifespan=lifespan,
 )
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+    }
+
 
 app.include_router(
     graphql_app,
@@ -1938,9 +1973,76 @@ async def get_context(
 
 ## `services/issues.py` — ownerベースCRUD
 
-Create:
+8段階からRead / Create / Update / Deleteをすべてlogin user基準にする。
+7段階までの`get_issues()` / `get_issue()`もここで置き換える。
 
 ```python
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.graphql.schemas.issue import (
+    CreateIssueInput,
+    Issue,
+    UpdateIssueInput,
+)
+from app.models.issue import IssueModel
+
+
+def to_issue(
+    model: IssueModel,
+) -> Issue:
+    return Issue(
+        id=model.id,
+        owner_id=model.owner_id,
+        title=model.title,
+        description=model.description,
+        status=model.status,
+        created_at=model.created_at,
+    )
+
+
+async def get_issues(
+    current_user_id: int,
+) -> list[Issue]:
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(IssueModel)
+            .where(
+                IssueModel.owner_id
+                == current_user_id
+            )
+            .order_by(IssueModel.id)
+        )
+
+        return [
+            to_issue(model)
+            for model in (
+                result.scalars().all()
+            )
+        ]
+
+
+async def get_issue(
+    issue_id: int,
+    current_user_id: int,
+) -> Issue | None:
+    async with SessionLocal() as session:
+        model = await session.get(
+            IssueModel,
+            issue_id,
+        )
+
+        if model is None:
+            return None
+
+        if model.owner_id != current_user_id:
+            raise ValueError(
+                "Forbidden"
+            )
+
+        return to_issue(model)
+
+
 async def create_issue(
     input: CreateIssueInput,
     owner_id: int,
@@ -1959,11 +2061,8 @@ async def create_issue(
         await session.refresh(model)
 
         return to_issue(model)
-```
 
-Update:
 
-```python
 async def update_issue(
     issue_id: int,
     input: UpdateIssueInput,
@@ -1996,11 +2095,8 @@ async def update_issue(
         await session.refresh(model)
 
         return to_issue(model)
-```
 
-Delete:
 
-```python
 async def delete_issue(
     issue_id: int,
     current_user_id: int,
@@ -2023,6 +2119,59 @@ async def delete_issue(
         await session.commit()
 
         return True
+```
+
+## `graphql/query.py` — 認証Read
+
+MutationだけでなくQueryもlogin userに限定する。
+これにより`/issues`で他UserのIssueを取得しない。
+
+```python
+import strawberry
+
+from app.graphql.schemas.issue import Issue
+from app.services import issues as issue_service
+
+
+@strawberry.type
+class Query:
+    @strawberry.field
+    async def issues(
+        self,
+        info: strawberry.Info,
+    ) -> list[Issue]:
+        current_user = (
+            info.context.current_user
+        )
+
+        if current_user is None:
+            raise ValueError(
+                "Authentication required"
+            )
+
+        return await issue_service.get_issues(
+            current_user_id=current_user.id,
+        )
+
+    @strawberry.field
+    async def issue(
+        self,
+        info: strawberry.Info,
+        id: int,
+    ) -> Issue | None:
+        current_user = (
+            info.context.current_user
+        )
+
+        if current_user is None:
+            raise ValueError(
+                "Authentication required"
+            )
+
+        return await issue_service.get_issue(
+            issue_id=id,
+            current_user_id=current_user.id,
+        )
 ```
 
 ## `graphql/mutation.py` — 認証CRUD
@@ -2241,6 +2390,26 @@ mutation {
 }
 ```
 
+Read:
+
+```graphql
+query {
+  issues {
+    id
+    title
+    description
+    status
+    owner {
+      id
+      name
+    }
+  }
+}
+```
+
+`issues` Queryにも同じ`Authorization` Headerを付ける。
+別Userでloginした場合、そのUser自身のIssueだけが返ることを確認する。
+
 失敗ケース:
 
 ```text
@@ -2254,7 +2423,7 @@ Headerなし        → Authentication失敗
 
 # 8段階拡張 — Authentication / GraphQL Integration Test
 
-JWTまで実装した後は、実際のGraphQL HTTP Requestを1本通して確認する。
+JWTまで実装した後は、実際のGraphQL HTTP Requestを通して認証FlowをTestする。
 
 このTestでは次の層をまとめて通す。
 
@@ -2272,38 +2441,47 @@ HTTP
 普段の開発DBとTestデータを混ぜないため、Test用DBを作成する。
 
 ```bash
-docker exec -it <postgres-container-name> \
+docker compose exec postgres \
   createdb -U app app_test
 ```
 
-`database.py`の`DATABASE_URL`は環境変数から読めるようにしておく。
-
-```python
-import os
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://app:password@localhost:5432/app",
-)
-```
-
-Test実行時だけ:
-
-```bash
-export DATABASE_URL="postgresql+asyncpg://app:password@localhost:5432/app_test"
-```
+5段階の`database.py`ですでに`DATABASE_URL`を環境変数から読めるため、Test実行時だけ`app_test`へ切り替える。
 
 ## `tests/test_graphql_auth.py`
 
+各Testの前にTest DBのTableを作り直すため、前の実行結果に依存しない。
+
 ```python
 import pytest
+import pytest_asyncio
 
 from httpx import (
     ASGITransport,
     AsyncClient,
 )
 
+import app.models
+
+from app.database import (
+    Base,
+    engine,
+)
 from app.main import app
+
+
+@pytest_asyncio.fixture(
+    autouse=True,
+)
+async def reset_database():
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            Base.metadata.drop_all,
+        )
+        await conn.run_sync(
+            Base.metadata.create_all,
+        )
+
+    yield
 
 
 @pytest.mark.asyncio
@@ -2345,7 +2523,9 @@ async def test_register_duplicate_email() -> None:
         )
 
         assert first.status_code == 200
-        assert first.json()["data"]["register"]["accessToken"]
+        assert first.json()["data"]["register"][
+            "accessToken"
+        ]
 
         second = await client.post(
             "/graphql",
@@ -2362,9 +2542,133 @@ async def test_register_duplicate_email() -> None:
         assert body["errors"][0]["message"] == (
             "Email already registered"
         )
+
+
+@pytest.mark.asyncio
+async def test_login_and_authenticated_issue_flow() -> None:
+    transport = ASGITransport(
+        app=app,
+    )
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        register = await client.post(
+            "/graphql",
+            json={
+                "query": """
+                mutation {
+                  register(
+                    input: {
+                      name: "test"
+                      email: "flow@example.com"
+                      password: "password123"
+                    }
+                  ) {
+                    accessToken
+                  }
+                }
+                """,
+            },
+        )
+
+        assert register.status_code == 200
+
+        login = await client.post(
+            "/graphql",
+            json={
+                "query": """
+                mutation {
+                  login(
+                    input: {
+                      email: "flow@example.com"
+                      password: "password123"
+                    }
+                  ) {
+                    accessToken
+                  }
+                }
+                """,
+            },
+        )
+
+        token = login.json()[
+            "data"
+        ]["login"]["accessToken"]
+
+        create = await client.post(
+            "/graphql",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            json={
+                "query": """
+                mutation {
+                  createIssue(
+                    input: {
+                      title: "Integration Test"
+                      description: "GraphQL HTTP"
+                    }
+                  ) {
+                    id
+                    title
+                    description
+                  }
+                }
+                """,
+            },
+        )
+
+        assert create.json()[
+            "data"
+        ]["createIssue"]["description"] == (
+            "GraphQL HTTP"
+        )
+
+        issues = await client.post(
+            "/graphql",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            json={
+                "query": """
+                query {
+                  issues {
+                    id
+                    title
+                    description
+                  }
+                }
+                """,
+            },
+        )
+
+        assert len(
+            issues.json()["data"]["issues"]
+        ) == 1
+
+        unauthenticated = await client.post(
+            "/graphql",
+            json={
+                "query": """
+                query {
+                  issues {
+                    id
+                  }
+                }
+                """,
+            },
+        )
+
+        assert unauthenticated.json()[
+            "errors"
+        ][0]["message"] == (
+            "Authentication required"
+        )
 ```
 
-Test前に`app_test`のschemaを作成済みにしてから実行する。
+実行:
 
 ```bash
 cd backend
@@ -2372,24 +2676,29 @@ DATABASE_URL="postgresql+asyncpg://app:password@localhost:5432/app_test" \
   uv run pytest tests/test_graphql_auth.py -q
 ```
 
-最低限、次のCaseへ増やせることも確認する。
+期待結果:
+
+```text
+2 passed
+```
+
+ここでは最低限、次を実際にTestしている。
 
 ```text
 1. 正常な会員登録
-2. 重複emailの会員登録を拒否
-3. 正常Login
-4. 不正なpassword
-5. Tokenなしで認証Mutationを呼び出す
-6. 正常TokenでIssueを作成
-7. 作成したIssueのownerを確認
-8. 存在しないUserのToken処理
+2. 重複emailを拒否
+3. 登録したEmail / Passwordで正常Login
+4. JWT付きでIssueを作成
+5. JWT付きで自分のIssueを取得
+6. Tokenなしのissues Queryを拒否
 ```
 
-この段階では全Caseを大量に書くことより、Unit TestとIntegration Testの境界を実際に1回通して理解することを優先する。
+Login失敗、他UserのIssue更新拒否などはPhase 5でSecurity Testを増やす。
 
 ---
 
-# Step 14 — Next.js + Tailwindで実際の画面を作る
+
+# 9段階 — Next.js + Tailwindで実際の画面を作る
 
 ## Goal
 
@@ -2401,7 +2710,8 @@ GraphiQLで確認してきたLogin / JWT / Issue CRUDを、今度はBrowser上�
 Next.js App Router
 TypeScript
 Tailwind CSS
-fetch
+graphql-request
+GraphQL Code Generator
 localStorage
 ```
 
@@ -2411,7 +2721,7 @@ localStorage
 
 ---
 
-## Step 14.1 — Next.js Project作成
+## 9.1 — Next.js Project作成
 
 Project rootで実行する。
 
@@ -2443,22 +2753,22 @@ Frontendの構成:
 frontend/
 ├── .env.local
 ├── src/
-│   ├── app/
-│   │   ├── globals.css
-│   │   ├── layout.tsx
-│   │   ├── page.tsx
-│   │   ├── login/
-│   │   │   └── page.tsx
-│   │   └── issues/
-│   │       └── page.tsx
-│   └── lib/
-│       └── graphql.ts
+│   └── app/
+│       ├── globals.css
+│       ├── layout.tsx
+│       ├── page.tsx
+│       ├── register/
+│       │   └── page.tsx
+│       ├── login/
+│       │   └── page.tsx
+│       └── issues/
+│           └── page.tsx
 └── package.json
 ```
 
 ---
 
-## Step 14.2 — Backend CORS
+## 9.2 — Backend CORS
 
 Frontendは`http://localhost:3000`、Backendは`http://localhost:8000`なので、開発環境ではCORSを許可する。
 
@@ -2488,7 +2798,7 @@ Productionでは実際のFrontend Originだけを許可する。
 
 ---
 
-## Step 14.3 — GraphQL URL
+## 9.3 — GraphQL URL
 
 `frontend/.env.local`:
 
@@ -2504,7 +2814,7 @@ npm run dev
 
 ---
 
-## Step 14.4 — graphql-request + `.graphql` + GraphQL Code Generator
+## 9.4 — graphql-request + `.graphql` + GraphQL Code Generator
 
 FrontendではGraphQL OperationをComponent内のStringとして管理しない。
 
@@ -2780,6 +3090,12 @@ const data =
   );
 
 
+if (!data.login) {
+  throw new Error(
+    "Login failed",
+  );
+}
+
 localStorage.setItem(
   "accessToken",
   data.login.accessToken,
@@ -2787,6 +3103,8 @@ localStorage.setItem(
 ```
 
 ここでは`data`に手動で型を書く必要がない。
+`login`はBackend Schema上nullableなので、先にnull checkを行う。
+その後は次のFieldがCodegenによって型付けされる。
 
 ```typescript
 data.login.accessToken
@@ -2794,8 +3112,6 @@ data.login.user.id
 data.login.user.name
 data.login.user.email
 ```
-
-がCodegenによって型付けされる。
 
 存在しないFieldを書いた場合:
 
@@ -2915,10 +3231,16 @@ import {
 
 const endpoint =
   process.env
-    .NEXT_PUBLIC_GRAPHQL_URL!;
+    .NEXT_PUBLIC_GRAPHQL_URL;
 
 
 export const getGraphQLClient = () => {
+  if (!endpoint) {
+    throw new Error(
+      "NEXT_PUBLIC_GRAPHQL_URL is not defined",
+    );
+  }
+
   const token =
     typeof window !== "undefined"
       ? localStorage.getItem(
@@ -2944,7 +3266,7 @@ export const getGraphQLClient = () => {
 Phase 2でApollo Clientを導入し、GraphQL Cacheを本格的に学ぶ。
 
 ---
-## Step 14.5 — Root Page
+## 9.5 — Root Page
 
 `frontend/src/app/page.tsx`:
 
@@ -3043,7 +3365,7 @@ export default Home;
 
 ---
 
-## Step 14.5.5 — Registration Page
+## 9.6 — Registration Page
 
 この画面で次のFlowを確認する。
 
@@ -3060,8 +3382,10 @@ Name / Email / Password入力
 ```tsx
 "use client";
 
-import {
+import type {
   FormEvent,
+} from "react";
+import {
   useState,
 } from "react";
 
@@ -3244,7 +3568,7 @@ export default RegisterPage;
 
 ---
 
-## Step 14.6 — Login Page
+## 9.7 — Login Page
 
 この画面で次のFlowを確認する。
 
@@ -3261,8 +3585,10 @@ Email / Password入力
 ```tsx
 "use client";
 
-import {
+import type {
   FormEvent,
+} from "react";
+import {
   useState,
 } from "react";
 
@@ -3529,7 +3855,7 @@ export default LoginPage;
 
 ---
 
-## Step 14.7 — Issue CRUD Page
+## 9.8 — Issue CRUD Page
 
 1画面で以下を確認する。
 
@@ -3546,8 +3872,10 @@ LOGOUT → Token削除
 ```tsx
 "use client";
 
-import {
+import type {
   FormEvent,
+} from "react";
+import {
   useCallback,
   useEffect,
   useState,
@@ -4112,7 +4440,7 @@ export default IssuesPage;
 
 ---
 
-## Step 14.8 — BrowserでCRUD確認
+## 9.9 — BrowserでCRUD確認
 
 Backend:
 
@@ -4192,7 +4520,7 @@ localStorageからaccessToken削除
 
 ---
 
-## Step 14.9 — Network TabでGraphQL確認
+## 9.10 — Network TabでGraphQL確認
 
 Chrome DevTools:
 
@@ -4219,7 +4547,7 @@ GraphiQLで実行していたQuery / MutationがBrowserからどのように送�
 
 ---
 
-## Step 14.10 — Authentication Failure確認
+## 9.11 — Authentication Failure確認
 
 DevToolsから`accessToken`を削除して`/issues`へ移動する。
 
@@ -4245,7 +4573,7 @@ accessToken = abc
 
 ---
 
-# Step 14拡張 — Frontend Testing
+# 9段階拡張 — Frontend Testing
 
 Frontendでも「Tool名だけ知る」で終わらせず、最低1本ずつ実行する。
 
@@ -4412,23 +4740,21 @@ Phase 1ではE2Eを大量に書かない。Login / Register / Issue CRUDのう�
 
 # 10段階 — Filter / Search / Cursor Pagination
 
-この段階では、どのFileを変更するかを最初に固定する。
+9段階で作成したIssue一覧を、Server側Filter / Search / Cursor Paginationへ発展させる。
+この段階では次のFileを順番に変更する。
 
 ```text
-Backend
-src/app/graphql/schemas/issue.py
-src/app/graphql/query.py
-src/app/services/issues.py
-
-Frontend
-frontend/src/graphql/issues.graphql
-frontend/src/app/issues/page.tsx
-
-Generated
-frontend/src/generated/graphql.ts
+1. backend/src/app/graphql/schemas/issue.py
+2. backend/src/app/services/issues.py
+3. backend/src/app/graphql/query.py
+4. frontend/src/graphql/issues.graphql
+5. frontend/src/generated/graphql.ts  ← npm run codegenで自動生成
+6. frontend/src/app/issues/page.tsx
 ```
 
-## `graphql/schemas/issue.py` — Pagination Response
+## 10.1 — `graphql/schemas/issue.py`
+
+既存の`Issue` Typeはそのまま残し、一覧Response用Typeを追加する。
 
 ```python
 @strawberry.type
@@ -4437,14 +4763,23 @@ class IssueConnection:
     next_cursor: str | None
 ```
 
-## `services/issues.py` — Filter / Search / Cursor
+Strawberryでは`next_cursor`がGraphQL上で`nextCursor`になる。
 
-Cursor helperもPhase 1ではこのFileに置く。
+## 10.2 — `services/issues.py`
+
+`IssueConnection`をimportし、8段階で作成した`get_issues()`を以下へ置き換える。
+Create / Update / Deleteは変更しない。
 
 ```python
 import base64
 
 from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.graphql.schemas.issue import (
+    IssueConnection,
+)
+from app.models.issue import IssueModel
 
 
 def encode_cursor(
@@ -4464,65 +4799,96 @@ def decode_cursor(
         cursor.encode(),
     ).decode()
 
-    _, issue_id = raw.split(":")
+    prefix, issue_id = raw.split(
+        ":",
+        maxsplit=1,
+    )
+
+    if prefix != "issue":
+        raise ValueError(
+            "Invalid cursor"
+        )
 
     return int(issue_id)
-```
 
-既存のIssue一覧Queryへ条件を追加する。
 
-```python
-stmt = (
-    select(IssueModel)
-    .where(
-        IssueModel.owner_id
-        == owner_id
-    )
-    .order_by(IssueModel.id)
-)
-
-if status is not None:
-    stmt = stmt.where(
-        IssueModel.status
-        == status
-    )
-
-if search:
-    stmt = stmt.where(
-        IssueModel.title.ilike(
-            f"%{search}%"
+async def get_issues(
+    current_user_id: int,
+    status: str | None = None,
+    search: str | None = None,
+    after: str | None = None,
+    first: int = 20,
+) -> IssueConnection:
+    if first < 1 or first > 100:
+        raise ValueError(
+            "first must be between 1 and 100"
         )
-    )
 
-if after is not None:
-    stmt = stmt.where(
-        IssueModel.id
-        > decode_cursor(after)
-    )
+    async with SessionLocal() as session:
+        stmt = (
+            select(IssueModel)
+            .where(
+                IssueModel.owner_id
+                == current_user_id
+            )
+            .order_by(IssueModel.id)
+        )
 
-stmt = stmt.limit(first + 1)
+        if status is not None:
+            stmt = stmt.where(
+                IssueModel.status == status
+            )
+
+        if search:
+            stmt = stmt.where(
+                IssueModel.title.ilike(
+                    f"%{search}%"
+                )
+            )
+
+        if after is not None:
+            stmt = stmt.where(
+                IssueModel.id
+                > decode_cursor(after)
+            )
+
+        stmt = stmt.limit(first + 1)
+
+        rows = list(
+            (await session.scalars(stmt)).all()
+        )
+
+        has_next = len(rows) > first
+        models = rows[:first]
+
+        items = [
+            to_issue(model)
+            for model in models
+        ]
+
+        next_cursor = (
+            encode_cursor(models[-1].id)
+            if has_next and models
+            else None
+        )
+
+        return IssueConnection(
+            items=items,
+            next_cursor=next_cursor,
+        )
 ```
 
-`first + 1`件取得し、次Pageが存在するか判定する。
+## 10.3 — `graphql/query.py`
+
+`IssueConnection`をimportし、`issues` Resolverだけを置き換える。
+`issue(id)` Resolverは8段階のままでよい。
 
 ```python
-rows = list(
-    (await session.scalars(stmt)).all()
-)
-
-has_next = len(rows) > first
-items = rows[:first]
-
-next_cursor = (
-    encode_cursor(items[-1].id)
-    if has_next and items
-    else None
+from app.graphql.schemas.issue import (
+    Issue,
+    IssueConnection,
 )
 ```
-
-最終的に`IssueConnection`を返す。
-
-## `graphql/query.py` — GraphQL Arguments
 
 ```python
 @strawberry.field
@@ -4544,7 +4910,7 @@ async def issues(
         )
 
     return await issue_service.get_issues(
-        owner_id=current_user.id,
+        current_user_id=current_user.id,
         status=status,
         search=search,
         after=after,
@@ -4552,7 +4918,7 @@ async def issues(
     )
 ```
 
-## GraphiQL確認
+## 10.4 — GraphiQL確認
 
 ```graphql
 query {
@@ -4564,6 +4930,7 @@ query {
     items {
       id
       title
+      description
       status
     }
     nextCursor
@@ -4571,7 +4938,7 @@ query {
 }
 ```
 
-返された`nextCursor`を次のRequestへ渡す。
+`nextCursor`が返った場合、次のRequestで`after`へ渡す。
 
 ```graphql
 query {
@@ -4582,13 +4949,18 @@ query {
     items {
       id
       title
+      description
+      status
     }
     nextCursor
   }
 }
 ```
 
-## `frontend/src/graphql/issues.graphql`
+## 10.5 — `frontend/src/graphql/issues.graphql`
+
+9段階の`GetIssues`を以下へ**置き換える**。
+`description`と`owner`もUIで使用するため残す。
 
 ```graphql
 query GetIssues(
@@ -4608,13 +4980,20 @@ query GetIssues(
       title
       description
       status
+
+      owner {
+        id
+        name
+        email
+      }
     }
+
     nextCursor
   }
 }
 ```
 
-Document変更後はCodegenを再実行する。
+Backendを起動した状態でCodegenを再実行する。
 
 ```bash
 cd frontend
@@ -4623,55 +5002,226 @@ npm run codegen
 
 `frontend/src/generated/graphql.ts`は直接編集しない。
 
-## `frontend/src/app/issues/page.tsx`
+## 10.6 — `frontend/src/app/issues/page.tsx`
 
-UIとして最低限追加する。
-
-```text
-Status Select
-Search Input
-Load More Button
-```
-
-Request variables:
+`GetIssues`のResponse shapeが`Issue[]`から`IssueConnection`へ変わったため、まずIssue型を変更する。
 
 ```tsx
-const data = await client.request(
-  GetIssuesDocument,
-  {
-    status:
-      status || null,
-    search:
-      search || null,
-    after,
-    first: 20,
+type Issue =
+  GetIssuesQuery["issues"]["items"][number];
+```
+
+既存stateへFilter / Search / Cursorを追加する。
+
+```tsx
+const [
+  status,
+  setStatus,
+] = useState("");
+
+const [
+  search,
+  setSearch,
+] = useState("");
+
+const [
+  debouncedSearch,
+  setDebouncedSearch,
+] = useState("");
+
+const [
+  nextCursor,
+  setNextCursor,
+] = useState<string | null>(null);
+```
+
+Searchは入力ごとにRequestせず、300ms待ってからQueryへ反映する。
+
+```tsx
+useEffect(
+  () => {
+    const timer = window.setTimeout(
+      () => {
+        setDebouncedSearch(search);
+      },
+      300,
+    );
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   },
+  [search],
 );
 ```
 
-Filter/Search条件が変わったときは`after`を`null`へ戻して先頭から取得する。
+9段階の`loadIssues`を以下へ置き換える。
 
-Load Moreでは現在の`nextCursor`を`after`へ渡し、返ってきた`items`を既存配列の後ろへ追加する。
+```tsx
+const loadIssues =
+  useCallback(
+    async (
+      after: string | null = null,
+      append = false,
+    ) => {
+      try {
+        const data =
+          await getGraphQLClient().request(
+            GetIssuesDocument,
+            {
+              status: status || null,
+              search:
+                debouncedSearch || null,
+              after,
+              first: 20,
+            },
+          );
 
-Search inputは入力のたびに即時Requestせず、短いdebounceを適用する。
+        setIssues(
+          (current) =>
+            append
+              ? [
+                  ...current,
+                  ...data.issues.items,
+                ]
+              : data.issues.items,
+        );
 
-この段階で確認すること:
+        setNextCursor(
+          data.issues.nextCursor
+          ?? null,
+        );
 
-```text
-1. statusがGraphQL variablesとして渡される
-2. searchがDB queryへ反映される
-3. nextCursorがnullになるまで次Pageを取得できる
-4. Load Moreで既存Issueが重複しない
-5. Filter/Search変更時にpaginationが先頭へ戻る
+        setError("");
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Unknown error",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      status,
+      debouncedSearch,
+    ],
+  );
 ```
 
-Phase 2ではこのFlowをApollo Clientのcache / pagination policyへ移行する。
+初回表示とFilter / Search変更時は先頭Pageから取得する。
+既存のtoken checkを残したまま、Effectを次の形にする。
+
+```tsx
+useEffect(
+  () => {
+    const token =
+      localStorage.getItem(
+        "accessToken",
+      );
+
+    if (!token) {
+      router.replace(
+        "/login",
+      );
+
+      return;
+    }
+
+    void loadIssues(
+      null,
+      false,
+    );
+  },
+  [
+    loadIssues,
+    router,
+  ],
+);
+```
+
+Load More handlerを追加する。
+
+```tsx
+const handleLoadMore = async () => {
+  if (!nextCursor) {
+    return;
+  }
+
+  await loadIssues(
+    nextCursor,
+    true,
+  );
+};
+```
+
+Issue Listの前にFilter / Search UIを追加する。
+
+```tsx
+<div className="flex gap-3">
+  <select
+    value={status}
+    onChange={(event) =>
+      setStatus(event.target.value)
+    }
+    className="rounded border border-gray-300 px-3 py-2"
+  >
+    <option value="">All</option>
+    <option value="OPEN">OPEN</option>
+    <option value="DONE">DONE</option>
+  </select>
+
+  <input
+    value={search}
+    onChange={(event) =>
+      setSearch(event.target.value)
+    }
+    placeholder="Search title"
+    className="flex-1 rounded border border-gray-300 px-3 py-2"
+  />
+</div>
+```
+
+Issue Listの下にLoad Moreを追加する。
+
+```tsx
+{nextCursor && (
+  <button
+    type="button"
+    onClick={() =>
+      void handleLoadMore()
+    }
+    className="rounded border border-gray-300 px-4 py-2"
+  >
+    Load More
+  </button>
+)}
+```
+
+この段階ではCreate / Update後に現在のFilter条件と表示内容がずれないよう、成功後に先頭Pageを再取得してもよい。
+Phase 2ではApollo Clientのcache / pagination policyへ移行する。
+
+確認項目:
+
+```text
+1. GetIssuesにdescription / ownerが残っている
+2. npm run codegenが成功する
+3. statusがGraphQL variablesとして渡される
+4. searchが300ms debounce後にDB queryへ反映される
+5. nextCursorがnullになるまで次Pageを取得できる
+6. Load Moreで既存Issueへ次Pageが追加される
+7. Filter / Search変更時は先頭Pageから再取得される
+8. 他UserのIssueは一覧へ出ない
+```
 
 ---
 
 # 11段階 — Docker Compose + CI
 
-## Backend Dockerfile
+この段階では「Dockerfileを書いた」で終わらせず、PostgreSQL + BackendをComposeで起動し、CIでもBackend / Frontend Testを実行する。
+
+## 11.1 — `backend/Dockerfile`
 
 ```dockerfile
 FROM python:3.12-slim
@@ -4681,10 +5231,9 @@ WORKDIR /app
 RUN pip install uv
 
 COPY pyproject.toml uv.lock ./
+COPY src ./src
 
 RUN uv sync --frozen
-
-COPY src ./src
 
 EXPOSE 8000
 
@@ -4700,21 +5249,82 @@ CMD [
 ]
 ```
 
-## CIの概念
+## 11.2 — root `docker-compose.yml`
 
-```text
-push
- ↓
-uv sync
- ↓
-lint
- ↓
-test
- ↓
-docker build
+5段階でPostgreSQLだけだったComposeをBackend込みに更新する。
+Container間ではDB hostに`localhost`ではなくService名`postgres`を使う。
+
+```yaml
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U app -d app",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: >-
+        postgresql+asyncpg://app:password@postgres:5432/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
 ```
 
-例:
+起動:
+
+```bash
+docker compose up --build
+```
+
+確認:
+
+```bash
+curl http://localhost:8000/health
+```
+
+GraphQL:
+
+```text
+http://localhost:8000/graphql
+```
+
+停止:
+
+```bash
+docker compose down
+```
+
+DBも初期化する場合だけ:
+
+```bash
+docker compose down -v
+```
+
+## 11.3 — `.github/workflows/ci.yml`
+
+Backend Integration TestはPostgreSQLが必要なので、GitHub ActionsのService Containerを使う。
 
 ```yaml
 name: CI
@@ -4726,6 +5336,25 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: >-
+        postgresql+asyncpg://app:password@localhost:5432/app_test
 
     steps:
       - uses: actions/checkout@v4
@@ -4739,7 +5368,50 @@ jobs:
       - run: |
           cd backend
           uv run python -m compileall src
+
+      - run: |
+          cd backend
+          uv run pytest tests/test_graphql_auth.py -q
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: |
+          cd frontend
+          npm ci
+
+      - run: |
+          cd frontend
+          npm run test
+
+      - run: |
+          cd frontend
+          npm run build
+        env:
+          NEXT_PUBLIC_GRAPHQL_URL: http://localhost:8000/graphql
 ```
+
+この段階の確認結果は次になる。
+
+```text
+Local:
+Docker Compose → PostgreSQL + FastAPI起動
+
+CI:
+Backend compile + GraphQL Integration Test
+Frontend Vitest + Next.js build
+```
+
+Playwright E2EをCIへ追加するのはPhase 4でDeployment flowと一緒に扱う。
 
 ---
 
@@ -4766,6 +5438,7 @@ EC2
 
 「Free TierだからResourceを残したままでよい」とは考えない。
 Hands-on終了後は不要Resourceを削除する。
+また、Public IPv4 Addressは課金対象になり得るため、使用中のCredit / Billingを確認しながら進める。
 
 ## 12.1 — EC2作成
 
@@ -4804,12 +5477,14 @@ sudo dnf update -y
 sudo dnf install -y docker
 sudo systemctl enable docker
 sudo systemctl start docker
+sudo usermod -aG docker "$USER"
 ```
 
-確認:
+一度SSHを切断して再接続した後に確認する。
 
 ```bash
 docker --version
+docker ps
 ```
 
 ## 12.3 — Backend ImageをEC2で起動
@@ -4841,6 +5516,7 @@ User: app
 Backup / Storage設定
 ```
 
+RDSはEC2と同じVPC内に作成する。
 RDS側Security Groupは、Internet全体ではなくEC2のSecurity GroupからPostgreSQL `5432`へ接続できるようにする。
 
 ```text
