@@ -376,6 +376,7 @@ query {
     title
     description
     status
+    createdAt
   }
 }
 ```
@@ -532,6 +533,7 @@ mutation {
     title
     description
     status
+    createdAt
   }
 }
 ```
@@ -543,7 +545,9 @@ query {
   issues {
     id
     title
+    description
     status
+    createdAt
   }
 }
 ```
@@ -574,7 +578,9 @@ mutation {
   ) {
     id
     title
+    description
     status
+    createdAt
   }
 }
 ```
@@ -1724,6 +1730,8 @@ password_hash: Mapped[str] = mapped_column(
 ## `security.py`
 
 ```python
+import os
+
 from datetime import (
     datetime,
     timedelta,
@@ -1735,7 +1743,10 @@ import jwt
 from pwdlib import PasswordHash
 
 
-JWT_SECRET = "dev-secret-change-me"
+JWT_SECRET = os.getenv(
+    "JWT_SECRET",
+    "dev-secret-change-me",
+)
 JWT_ALGORITHM = "HS256"
 
 password_hash = (
@@ -1802,6 +1813,8 @@ def decode_access_token(
     except Exception:
         return None
 ```
+
+Local学習ではfallback値を使えるが、AWSへDeployするときは`JWT_SECRET`をEnvironment Variableで必ず上書きする。
 
 ## `graphql/schemas/auth.py`
 
@@ -2912,6 +2925,7 @@ query GetIssues {
     title
     description
     status
+    createdAt
 
     owner {
       id
@@ -2935,6 +2949,7 @@ mutation CreateIssue(
     title
     description
     status
+    createdAt
 
     owner {
       id
@@ -2960,9 +2975,20 @@ mutation UpdateIssue(
     title
     description
     status
+    createdAt
+
+    owner {
+      id
+      name
+      email
+    }
   }
 }
 ```
+
+`GetIssues`と`CreateIssue`は、`Issue` stateへ同じObjectを入れるため、
+`id / title / description / status / createdAt / owner`を同じField setとして揃える。
+`UpdateIssue`も同じField setを返すようにし、Operation間でIssue shapeをずらさない。
 
 `src/graphql/delete-issue.graphql`:
 
@@ -4371,6 +4397,20 @@ const IssuesPage = () => {
                       {" "}
                       {issue.owner.name}
                     </p>
+
+                    <p
+                      className="
+                        mt-1
+                        text-xs
+                        text-gray-400
+                      "
+                    >
+                      Created:
+                      {" "}
+                      {new Date(
+                        issue.createdAt,
+                      ).toLocaleString()}
+                    </p>
                   </div>
 
                   <div
@@ -4492,7 +4532,9 @@ DBでも確認する。
 SELECT
     id,
     title,
+    description,
     status,
+    created_at,
     owner_id
 FROM issues
 ORDER BY id;
@@ -4767,19 +4809,25 @@ Strawberryでは`next_cursor`がGraphQL上で`nextCursor`になる。
 
 ## 10.2 — `services/issues.py`
 
-`IssueConnection`をimportし、8段階で作成した`get_issues()`を以下へ置き換える。
-Create / Update / Deleteは変更しない。
+8段階の`services/issues.py`全体を作り直さない。
+既存のCreate / Update / Deleteと`to_issue()`はそのまま残し、importへ`base64`と`IssueConnection`を追加して、`get_issues()`だけを置き換える。
+
+既存importへの追加:
 
 ```python
 import base64
 
-from sqlalchemy import select
-
-from app.database import SessionLocal
 from app.graphql.schemas.issue import (
+    CreateIssueInput,
+    Issue,
     IssueConnection,
+    UpdateIssueInput,
 )
-from app.models.issue import IssueModel
+```
+
+`get_issues()`とCursor helper:
+
+```python
 
 
 def encode_cursor(
@@ -4932,6 +4980,13 @@ query {
       title
       description
       status
+      createdAt
+
+      owner {
+        id
+        name
+        email
+      }
     }
     nextCursor
   }
@@ -4951,6 +5006,13 @@ query {
       title
       description
       status
+      createdAt
+
+      owner {
+        id
+        name
+        email
+      }
     }
     nextCursor
   }
@@ -4960,7 +5022,7 @@ query {
 ## 10.5 — `frontend/src/graphql/issues.graphql`
 
 9段階の`GetIssues`を以下へ**置き換える**。
-`description`と`owner`もUIで使用するため残す。
+9段階で使用している`description` / `createdAt` / `owner`を落とさず、IssueのField setを維持する。
 
 ```graphql
 query GetIssues(
@@ -4980,6 +5042,7 @@ query GetIssues(
       title
       description
       status
+      createdAt
 
       owner {
         id
@@ -5205,7 +5268,7 @@ Phase 2ではApollo Clientのcache / pagination policyへ移行する。
 確認項目:
 
 ```text
-1. GetIssuesにdescription / ownerが残っている
+1. GetIssuesにid / title / description / status / createdAt / ownerが揃っている
 2. npm run codegenが成功する
 3. statusがGraphQL variablesとして渡される
 4. searchが300ms debounce後にDB queryへ反映される
@@ -5214,6 +5277,87 @@ Phase 2ではApollo Clientのcache / pagination policyへ移行する。
 7. Filter / Search変更時は先頭Pageから再取得される
 8. 他UserのIssueは一覧へ出ない
 ```
+
+---
+
+## 10.7 — Pagination変更後のIntegration Test更新
+
+10段階では`issues`の戻り値が`list[Issue]`から`IssueConnection`へ変わる。
+8段階拡張で作成した`tests/test_graphql_auth.py`をそのまま残すと、Step 11のCIで古いQuery shapeを実行して失敗する。
+
+`test_login_and_authenticated_issue_flow()`内の`issues` Queryを次へ置き換える。
+
+```python
+issues = await client.post(
+    "/graphql",
+    headers={
+        "Authorization": f"Bearer {token}",
+    },
+    json={
+        "query": """
+        query {
+          issues(first: 20) {
+            items {
+              id
+              title
+              description
+              status
+              createdAt
+              owner {
+                id
+                email
+              }
+            }
+            nextCursor
+          }
+        }
+        """,
+    },
+)
+
+body = issues.json()["data"]["issues"]
+
+assert len(body["items"]) == 1
+assert body["items"][0]["title"] == (
+    "Integration Test"
+)
+assert body["nextCursor"] is None
+```
+
+Unauthenticated QueryもConnection shapeへ合わせる。
+
+```python
+unauthenticated = await client.post(
+    "/graphql",
+    json={
+        "query": """
+        query {
+          issues(first: 20) {
+            items {
+              id
+            }
+          }
+        }
+        """,
+    },
+)
+
+assert unauthenticated.json()[
+    "errors"
+][0]["message"] == (
+    "Authentication required"
+)
+```
+
+再実行する。
+
+```bash
+cd backend
+DATABASE_URL="postgresql+asyncpg://app:password@localhost:5432/app_test" \
+  uv run pytest tests/test_graphql_auth.py -q
+```
+
+これでStep 11のCIも10段階時点のSchemaと同じContractをTestする。
 
 ---
 
@@ -5237,16 +5381,7 @@ RUN uv sync --frozen
 
 EXPOSE 8000
 
-CMD [
-  "uv",
-  "run",
-  "uvicorn",
-  "app.main:app",
-  "--host",
-  "0.0.0.0",
-  "--port",
-  "8000"
-]
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ## 11.2 — root `docker-compose.yml`
@@ -5282,6 +5417,7 @@ services:
     environment:
       DATABASE_URL: >-
         postgresql+asyncpg://app:password@postgres:5432/app
+      JWT_SECRET: local-docker-secret
     ports:
       - "8000:8000"
     depends_on:
@@ -5454,11 +5590,11 @@ Security Group
 Public IPv4
 ```
 
-Security Groupでは学習用に必要なPortだけを開ける。
+Security Groupでは学習用に必要なPortだけを開け、Sourceは可能なら自分のPublic IPに限定する。
 
 ```text
-22   SSH
-8000 FastAPI確認用
+22   SSH      Source: My IP
+8000 FastAPI  Source: My IP
 ```
 
 SSH接続:
@@ -5536,21 +5672,39 @@ export DATABASE_URL="postgresql+asyncpg://app:<password>@<rds-endpoint>:5432/app
 Container起動:
 
 ```bash
+export JWT_SECRET="<long-random-secret>"
+
 docker run \
   --rm \
   -p 8000:8000 \
   -e DATABASE_URL="$DATABASE_URL" \
+  -e JWT_SECRET="$JWT_SECRET" \
   issue-backend
 ```
 
-Local PCから確認:
+Local PCからまずHealth Checkを確認する。
+
+```bash
+curl http://<ec2-public-ip>:8000/health
+```
+
+GraphQLもHTTP POSTで確認する。
 
 ```bash
 curl \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"query":"query { __typename }"}' \
   http://<ec2-public-ip>:8000/graphql
 ```
 
-GraphiQLまたはFrontendからRegister / Login / Issue CRUDがRDSへ保存されることを確認する。
+Frontendから確認する場合は`frontend/.env.local`を一時的にEC2へ向け、Dev Serverを再起動する。
+
+```env
+NEXT_PUBLIC_GRAPHQL_URL=http://<ec2-public-ip>:8000/graphql
+```
+
+Register / Login / Issue CRUDを実行し、DataがRDSへ保存されることを確認する。
 
 ## 12.6 — Hands-on終了後にResource削除
 
@@ -5798,6 +5952,21 @@ pytest + pytest-asyncio + httpx
 Vitest + React Testing Library
 Playwright
 ```
+
+最終的に、Frontendで使用するIssue Fieldが次の全経路で一致していることも確認する。
+
+```text
+GraphQL Issue Schema
+→ services.to_issue()
+→ GetIssues / CreateIssue / UpdateIssue
+→ npm run codegen
+→ GetIssuesQuery由来のIssue型
+→ IssuesPage
+
+id / title / description / status / createdAt / owner
+```
+
+また、10段階で`issues`がConnectionへ変わった後は、Integration TestもConnection shapeへ更新されていることを確認する。
 
 Phase 1のDocker / AWS部分は、全体の接続を確認するための入門レベルとする。
 ProductionレベルのContainer、AWS、Terraform、CI/CDは**Phase 4**で改めて深く扱う。
