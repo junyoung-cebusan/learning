@@ -523,12 +523,7 @@ class Mutation:
 
 ```graphql
 mutation {
-  createIssue(
-    input: {
-      title: "Memory CRUD"
-      description: "Create確認"
-    }
-  ) {
+  createIssue(input: { title: "Memory CRUD", description: "Create確認" }) {
     id
     title
     description
@@ -569,13 +564,7 @@ query {
 
 ```graphql
 mutation {
-  updateIssue(
-    id: 2
-    input: {
-      title: "Memory CRUD更新"
-      status: "DONE"
-    }
-  ) {
+  updateIssue(id: 2, input: { title: "Memory CRUD更新", status: "DONE" }) {
     id
     title
     description
@@ -604,7 +593,6 @@ query {
 ```
 
 ---
-
 
 # 4段階拡張 — Backend Unit Test入門
 
@@ -1150,12 +1138,7 @@ Create:
 
 ```graphql
 mutation {
-  createIssue(
-    input: {
-      title: "PostgreSQL CRUD"
-      description: "INSERT確認"
-    }
-  ) {
+  createIssue(input: { title: "PostgreSQL CRUD", description: "INSERT確認" }) {
     id
     title
     description
@@ -1195,13 +1178,7 @@ Update:
 
 ```graphql
 mutation {
-  updateIssue(
-    id: 1
-    input: {
-      title: "PostgreSQL CRUD更新"
-      status: "DONE"
-    }
-  ) {
+  updateIssue(id: 1, input: { title: "PostgreSQL CRUD更新", status: "DONE" }) {
     id
     title
     status
@@ -1299,10 +1276,7 @@ Create:
 ```graphql
 mutation {
   createIssue(
-    input: {
-      title: "SQL確認用Issue"
-      description: "INSERT Log確認"
-    }
+    input: { title: "SQL確認用Issue", description: "INSERT Log確認" }
   ) {
     id
     title
@@ -1327,12 +1301,7 @@ Update:
 
 ```graphql
 mutation {
-  updateIssue(
-    id: 1
-    input: {
-      status: "DONE"
-    }
-  ) {
+  updateIssue(id: 1, input: { status: "DONE" }) {
     id
     status
   }
@@ -1665,10 +1634,7 @@ Create:
 ```graphql
 mutation {
   createIssue(
-    input: {
-      title: "DataLoader Issue"
-      description: "Owner relation"
-    }
+    input: { title: "DataLoader Issue", description: "Owner relation" }
   ) {
     id
     title
@@ -2301,9 +2267,7 @@ Logout
 Next.js:
 
 ```typescript
-localStorage.removeItem(
-  "accessToken",
-);
+localStorage.removeItem("accessToken");
 ```
 
 Refresh Token / Redis sessionを追加するSenior段階ではserver-side revoke/logoutを扱う。
@@ -2335,12 +2299,7 @@ Login:
 
 ```graphql
 mutation {
-  login(
-    input: {
-      email: "hwang@example.com"
-      password: "password123"
-    }
-  ) {
+  login(input: { email: "hwang@example.com", password: "password123" }) {
     accessToken
     user {
       id
@@ -2364,10 +2323,7 @@ Create:
 ```graphql
 mutation {
   createIssue(
-    input: {
-      title: "JWT CRUD"
-      description: "Authenticated Create"
-    }
+    input: { title: "JWT CRUD", description: "Authenticated Create" }
   ) {
     id
     title
@@ -2383,12 +2339,7 @@ Update:
 
 ```graphql
 mutation {
-  updateIssue(
-    id: 1
-    input: {
-      status: "DONE"
-    }
-  ) {
+  updateIssue(id: 1, input: { status: "DONE" }) {
     id
     status
   }
@@ -2432,7 +2383,6 @@ Headerなし        → Authentication失敗
 ```
 
 ---
-
 
 # 8段階拡張 — Authentication / GraphQL Integration Test
 
@@ -2710,7 +2660,6 @@ Login失敗、他UserのIssue更新拒否などはPhase 5でSecurity Testを増�
 
 ---
 
-
 # 9段階 — Next.js + Tailwindで実際の画面を作る
 
 ## Goal
@@ -2879,12 +2828,8 @@ frontend/
 `src/graphql/register.graphql`:
 
 ```graphql
-mutation Register(
-  $input: RegisterInput!
-) {
-  register(
-    input: $input
-  ) {
+mutation Register($input: RegisterInput!) {
+  register(input: $input) {
     accessToken
 
     user {
@@ -2899,12 +2844,8 @@ mutation Register(
 `src/graphql/login.graphql`:
 
 ```graphql
-mutation Login(
-  $input: LoginInput!
-) {
-  login(
-    input: $input
-  ) {
+mutation Login($input: LoginInput!) {
+  login(input: $input) {
     accessToken
 
     user {
@@ -2939,12 +2880,8 @@ query GetIssues {
 `src/graphql/create-issue.graphql`:
 
 ```graphql
-mutation CreateIssue(
-  $input: CreateIssueInput!
-) {
-  createIssue(
-    input: $input
-  ) {
+mutation CreateIssue($input: CreateIssueInput!) {
+  createIssue(input: $input) {
     id
     title
     description
@@ -2963,14 +2900,8 @@ mutation CreateIssue(
 `src/graphql/update-issue.graphql`:
 
 ```graphql
-mutation UpdateIssue(
-  $id: Int!
-  $input: UpdateIssueInput!
-) {
-  updateIssue(
-    id: $id
-    input: $input
-  ) {
+mutation UpdateIssue($id: Int!, $input: UpdateIssueInput!) {
+  updateIssue(id: $id, input: $input) {
     id
     title
     description
@@ -2993,12 +2924,8 @@ mutation UpdateIssue(
 `src/graphql/delete-issue.graphql`:
 
 ```graphql
-mutation DeleteIssue(
-  $id: Int!
-) {
-  deleteIssue(
-    id: $id
-  )
+mutation DeleteIssue($id: Int!) {
+  deleteIssue(id: $id)
 }
 ```
 
@@ -3007,29 +2934,25 @@ mutation DeleteIssue(
 `frontend/codegen.ts`:
 
 ```typescript
-import type {
-  CodegenConfig,
-} from "@graphql-codegen/cli";
+import type { CodegenConfig } from "@graphql-codegen/cli";
 
-
-const config:
-  CodegenConfig = {
-    schema:
-      "http://localhost:8000/graphql",
-
-    documents:
-      "src/graphql/**/*.graphql",
-
-    generates: {
-      "src/generated/graphql.ts": {
-        plugins: [
-          "typescript-operations",
-          "typed-document-node",
-        ],
+const config: CodegenConfig = {
+  schema: "http://127.0.0.1:8000/graphql",
+  documents: "src/graphql/**/*.graphql",
+  generates: {
+    "src/generated/graphql.ts": {
+      plugins: ["typescript-operations", "typed-document-node"],
+      config: {
+        scalars: {
+          DateTime: {
+            input: "string",
+            output: "string",
+          },
+        },
       },
     },
-  };
-
+  },
+};
 
 export default config;
 ```
@@ -3095,37 +3018,22 @@ CreateIssueMutationVariables
 そのため`graphql-request`に渡すと、ResponseとVariablesの型を自動的に推論できる。
 
 ```typescript
-import {
-  LoginDocument,
-} from "@/generated/graphql";
+import { LoginDocument } from "@/generated/graphql";
 
-import {
-  getGraphQLClient,
-} from "@/lib/graphql-client";
+import { getGraphQLClient } from "@/lib/graphql-client";
 
-
-const data =
-  await getGraphQLClient().request(
-    LoginDocument,
-    {
-      input: {
-        email,
-        password,
-      },
-    },
-  );
-
+const data = await getGraphQLClient().request(LoginDocument, {
+  input: {
+    email,
+    password,
+  },
+});
 
 if (!data.login) {
-  throw new Error(
-    "Login failed",
-  );
+  throw new Error("Login failed");
 }
 
-localStorage.setItem(
-  "accessToken",
-  data.login.accessToken,
-);
+localStorage.setItem("accessToken", data.login.accessToken);
 ```
 
 ここでは`data`に手動で型を書く必要がない。
@@ -3133,16 +3041,16 @@ localStorage.setItem(
 その後は次のFieldがCodegenによって型付けされる。
 
 ```typescript
-data.login.accessToken
-data.login.user.id
-data.login.user.name
-data.login.user.email
+data.login.accessToken;
+data.login.user.id;
+data.login.user.name;
+data.login.user.email;
 ```
 
 存在しないFieldを書いた場合:
 
 ```typescript
-data.login.user.username
+data.login.user.username;
 ```
 
 Schema / Operationに`username`が存在しなければTypeScript Errorになる。
@@ -3154,25 +3062,16 @@ Schema / Operationに`username`が存在しなければTypeScript Errorになる
 必要であれば生成されたVariables Typeを明示的に利用できる。
 
 ```typescript
-import type {
-  LoginMutationVariables,
-} from "@/generated/graphql";
+import type { LoginMutationVariables } from "@/generated/graphql";
 
+const variables: LoginMutationVariables = {
+  input: {
+    email,
+    password,
+  },
+};
 
-const variables:
-  LoginMutationVariables = {
-    input: {
-      email,
-      password,
-    },
-  };
-
-
-const data =
-  await getGraphQLClient().request(
-    LoginDocument,
-    variables,
-  );
+const data = await getGraphQLClient().request(LoginDocument, variables);
 ```
 
 ただし通常は`LoginDocument`からVariables Typeが推論されるため、毎回明示的に書く必要はない。
@@ -3184,22 +3083,15 @@ const data =
 Issue型をFrontend側で手書きしない。
 
 ```typescript
-import type {
-  GetIssuesQuery,
-} from "@/generated/graphql";
+import type { GetIssuesQuery } from "@/generated/graphql";
 
-
-type Issue =
-  GetIssuesQuery["issues"][number];
+type Issue = GetIssuesQuery["issues"][number];
 ```
 
 これにより:
 
 ```typescript
-const [
-  issues,
-  setIssues,
-] = useState<Issue[]>([]);
+const [issues, setIssues] = useState<Issue[]>([]);
 ```
 
 の`Issue`型がGraphQL Operationと同期する。
@@ -3250,41 +3142,25 @@ React UI
 `src/lib/graphql-client.ts`:
 
 ```typescript
-import {
-  GraphQLClient,
-} from "graphql-request";
+import { GraphQLClient } from "graphql-request";
 
-
-const endpoint =
-  process.env
-    .NEXT_PUBLIC_GRAPHQL_URL;
-
+const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_URL;
 
 export const getGraphQLClient = () => {
   if (!endpoint) {
-    throw new Error(
-      "NEXT_PUBLIC_GRAPHQL_URL is not defined",
-    );
+    throw new Error("NEXT_PUBLIC_GRAPHQL_URL is not defined");
   }
 
   const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem(
-          "accessToken",
-        )
-      : null;
+    typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
 
-  return new GraphQLClient(
-    endpoint,
-    {
-      headers: token
-        ? {
-            Authorization:
-              `Bearer ${token}`,
-          }
-        : {},
-    },
-  );
+  return new GraphQLClient(endpoint, {
+    headers: token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : {},
+  });
 };
 ```
 
@@ -3292,13 +3168,13 @@ export const getGraphQLClient = () => {
 Phase 2でApollo Clientを導入し、GraphQL Cacheを本格的に学ぶ。
 
 ---
+
 ## 9.5 — Root Page
 
 `frontend/src/app/page.tsx`:
 
 ```tsx
 import Link from "next/link";
-
 
 const Home = () => {
   return (
@@ -3408,27 +3284,16 @@ Name / Email / Password入力
 ```tsx
 "use client";
 
-import type {
-  FormEvent,
-} from "react";
-import {
-  useState,
-} from "react";
+import type { FormEvent } from "react";
+import { useState } from "react";
 
-import {
-  useRouter,
-} from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import Link from "next/link";
 
-import {
-  RegisterDocument,
-} from "@/generated/graphql";
+import { RegisterDocument } from "@/generated/graphql";
 
-import {
-  getGraphQLClient,
-} from "@/lib/graphql-client";
-
+import { getGraphQLClient } from "@/lib/graphql-client";
 
 const RegisterPage = () => {
   const router = useRouter();
@@ -3439,10 +3304,7 @@ const RegisterPage = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-
-  const handleSubmit = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     setError("");
@@ -3451,125 +3313,86 @@ const RegisterPage = () => {
     try {
       const client = getGraphQLClient();
 
-      const data = await client.request(
-        RegisterDocument,
-        {
-          input: {
-            name,
-            email,
-            password,
-          },
+      const data = await client.request(RegisterDocument, {
+        input: {
+          name,
+          email,
+          password,
         },
-      );
+      });
 
-      localStorage.setItem(
-        "accessToken",
-        data.register.accessToken,
-      );
+      localStorage.setItem("accessToken", data.register.accessToken);
 
       router.push("/issues");
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
-      );
+      setError(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   };
 
-
   return (
-    <main
-      className="mx-auto flex min-h-screen max-w-md items-center p-6"
-    >
+    <main className="mx-auto flex min-h-screen max-w-md items-center p-6">
       <form
         onSubmit={handleSubmit}
         className="w-full space-y-4 rounded-lg border border-gray-200 p-6"
       >
-        <h1 className="text-2xl font-bold">
-          Register
-        </h1>
+        <h1 className="text-2xl font-bold">Register</h1>
 
         <div>
-          <label
-            htmlFor="name"
-            className="mb-1 block text-sm font-medium"
-          >
+          <label htmlFor="name" className="mb-1 block text-sm font-medium">
             Name
           </label>
           <input
             id="name"
             value={name}
-            onChange={(event) =>
-              setName(event.target.value)
-            }
+            onChange={(event) => setName(event.target.value)}
             className="w-full rounded border border-gray-300 px-3 py-2"
             required
           />
         </div>
 
         <div>
-          <label
-            htmlFor="email"
-            className="mb-1 block text-sm font-medium"
-          >
+          <label htmlFor="email" className="mb-1 block text-sm font-medium">
             Email
           </label>
           <input
             id="email"
             type="email"
             value={email}
-            onChange={(event) =>
-              setEmail(event.target.value)
-            }
+            onChange={(event) => setEmail(event.target.value)}
             className="w-full rounded border border-gray-300 px-3 py-2"
             required
           />
         </div>
 
         <div>
-          <label
-            htmlFor="password"
-            className="mb-1 block text-sm font-medium"
-          >
+          <label htmlFor="password" className="mb-1 block text-sm font-medium">
             Password
           </label>
           <input
             id="password"
             type="password"
             value={password}
-            onChange={(event) =>
-              setPassword(event.target.value)
-            }
+            onChange={(event) => setPassword(event.target.value)}
             className="w-full rounded border border-gray-300 px-3 py-2"
             required
           />
         </div>
 
-        {error && (
-          <p className="text-sm text-red-600">
-            {error}
-          </p>
-        )}
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
         <button
           type="submit"
           disabled={loading}
           className="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-50"
         >
-          {loading
-            ? "Registering..."
-            : "Register"}
+          {loading ? "Registering..." : "Register"}
         </button>
 
         <p className="text-center text-sm text-gray-600">
           Already have an account?{" "}
-          <Link
-            href="/login"
-            className="underline"
-          >
+          <Link href="/login" className="underline">
             Login
           </Link>
         </p>
@@ -3611,100 +3434,57 @@ Email / Password入力
 ```tsx
 "use client";
 
-import type {
-  FormEvent,
-} from "react";
-import {
-  useState,
-} from "react";
+import type { FormEvent } from "react";
+import { useState } from "react";
 
-import {
-  useRouter,
-} from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import Link from "next/link";
 
-import {
-  LoginDocument,
-} from "@/generated/graphql";
+import { LoginDocument } from "@/generated/graphql";
 
-import {
-  getGraphQLClient,
-} from "@/lib/graphql-client";
-
+import { getGraphQLClient } from "@/lib/graphql-client";
 
 const LoginPage = () => {
   const router = useRouter();
 
-  const [
-    email,
-    setEmail,
-  ] = useState("");
+  const [email, setEmail] = useState("");
 
-  const [
-    password,
-    setPassword,
-  ] = useState("");
+  const [password, setPassword] = useState("");
 
-  const [
-    error,
-    setError,
-  ] = useState("");
+  const [error, setError] = useState("");
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-
-  const handleSubmit = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     setError("");
     setLoading(true);
 
     try {
-      const client =
-        getGraphQLClient();
+      const client = getGraphQLClient();
 
-      const data =
-        await client.request(
-          LoginDocument,
-          {
-            input: {
-              email,
-              password,
-            },
-          },
-        );
+      const data = await client.request(LoginDocument, {
+        input: {
+          email,
+          password,
+        },
+      });
 
       if (!data.login) {
-        throw new Error(
-          "Login failed",
-        );
+        throw new Error("Login failed");
       }
 
-      localStorage.setItem(
-        "accessToken",
-        data.login.accessToken,
-      );
+      localStorage.setItem("accessToken", data.login.accessToken);
 
-      router.push(
-        "/issues",
-      );
+      router.push("/issues");
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
-      );
+      setError(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   };
-
 
   return (
     <main
@@ -3718,9 +3498,7 @@ const LoginPage = () => {
       "
     >
       <form
-        onSubmit={
-          handleSubmit
-        }
+        onSubmit={handleSubmit}
         className="
           w-full
           space-y-4
@@ -3766,12 +3544,7 @@ const LoginPage = () => {
           <input
             type="email"
             value={email}
-            onChange={
-              (event) =>
-                setEmail(
-                  event.target.value,
-                )
-            }
+            onChange={(event) => setEmail(event.target.value)}
             required
             className="
               w-full
@@ -3799,12 +3572,7 @@ const LoginPage = () => {
           <input
             type="password"
             value={password}
-            onChange={
-              (event) =>
-                setPassword(
-                  event.target.value,
-                )
-            }
+            onChange={(event) => setPassword(event.target.value)}
             required
             className="
               w-full
@@ -3844,19 +3612,12 @@ const LoginPage = () => {
             disabled:opacity-50
           "
         >
-          {
-            loading
-              ? "Logging in..."
-              : "Login"
-          }
+          {loading ? "Logging in..." : "Login"}
         </button>
 
         <p className="text-center text-sm text-gray-600">
           Don&apos;t have an account?{" "}
-          <Link
-            href="/register"
-            className="underline"
-          >
+          <Link href="/register" className="underline">
             Create account
           </Link>
         </p>
@@ -3898,18 +3659,10 @@ LOGOUT → Token削除
 ```tsx
 "use client";
 
-import type {
-  FormEvent,
-} from "react";
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import type { FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import {
-  useRouter,
-} from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import {
   CreateIssueDocument,
@@ -3919,107 +3672,54 @@ import {
   type GetIssuesQuery,
 } from "@/generated/graphql";
 
-import {
-  getGraphQLClient,
-} from "@/lib/graphql-client";
+import { getGraphQLClient } from "@/lib/graphql-client";
 
-
-type Issue =
-  GetIssuesQuery["issues"][number];
-
+type Issue = GetIssuesQuery["issues"][number];
 
 const IssuesPage = () => {
   const router = useRouter();
 
-  const [
-    issues,
-    setIssues,
-  ] = useState<Issue[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
 
-  const [
-    title,
-    setTitle,
-  ] = useState("");
+  const [title, setTitle] = useState("");
 
-  const [
-    description,
-    setDescription,
-  ] = useState("");
+  const [description, setDescription] = useState("");
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [
-    saving,
-    setSaving,
-  ] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [
-    error,
-    setError,
-  ] = useState("");
+  const [error, setError] = useState("");
 
+  const loadIssues = useCallback(async () => {
+    setError("");
 
-  const loadIssues =
-    useCallback(
-      async () => {
-        setError("");
+    try {
+      const client = getGraphQLClient();
 
-        try {
-          const client =
-            getGraphQLClient();
+      const data = await client.request(GetIssuesDocument);
 
-          const data =
-            await client.request(
-              GetIssuesDocument,
-            );
+      setIssues(data.issues);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-          setIssues(
-            data.issues,
-          );
-        } catch (error) {
-          setError(
-            error instanceof Error
-              ? error.message
-              : "Unknown error",
-          );
-        } finally {
-          setLoading(false);
-        }
-      },
-      [],
-    );
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
 
+    if (!token) {
+      router.replace("/login");
 
-  useEffect(
-    () => {
-      const token =
-        localStorage.getItem(
-          "accessToken",
-        );
+      return;
+    }
 
-      if (!token) {
-        router.replace(
-          "/login",
-        );
+    void loadIssues();
+  }, [loadIssues, router]);
 
-        return;
-      }
-
-      void loadIssues();
-    },
-    [
-      loadIssues,
-      router,
-    ],
-  );
-
-
-  const handleCreate = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
+  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!title.trim()) {
@@ -4030,132 +3730,80 @@ const IssuesPage = () => {
     setError("");
 
     try {
-      const data =
-        await getGraphQLClient().request(
-          CreateIssueDocument,
-          {
-            input: {
-              title,
-              description:
-                description || null,
-            },
-          },
-        );
+      const data = await getGraphQLClient().request(CreateIssueDocument, {
+        input: {
+          title,
+          description: description || null,
+        },
+      });
 
-      setIssues(
-        (current) => [
-          ...current,
-          data.createIssue,
-        ],
-      );
+      setIssues((current) => [...current, data.createIssue]);
 
       setTitle("");
       setDescription("");
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
-      );
+      setError(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setSaving(false);
     }
   };
 
-
-  const markDone = async (
-    issueId: number,
-  ) => {
+  const markDone = async (issueId: number) => {
     setError("");
 
     try {
-      const data =
-        await getGraphQLClient().request(
-          UpdateIssueDocument,
-          {
-            id: issueId,
+      const data = await getGraphQLClient().request(UpdateIssueDocument, {
+        id: issueId,
 
-            input: {
-              status: "DONE",
-            },
-          },
-        );
+        input: {
+          status: "DONE",
+        },
+      });
 
-      const updatedIssue =
-        data.updateIssue;
+      const updatedIssue = data.updateIssue;
 
       if (!updatedIssue) {
         return;
       }
 
-      setIssues(
-        (current) =>
-          current.map(
-            (issue) =>
-              issue.id === issueId
-                ? {
-                    ...issue,
-                    status:
-                      updatedIssue.status,
-                  }
-                : issue,
-          ),
+      setIssues((current) =>
+        current.map((issue) =>
+          issue.id === issueId
+            ? {
+                ...issue,
+                status: updatedIssue.status,
+              }
+            : issue,
+        ),
       );
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
-      );
+      setError(error instanceof Error ? error.message : "Unknown error");
     }
   };
 
-
-  const removeIssue = async (
-    issueId: number,
-  ) => {
+  const removeIssue = async (issueId: number) => {
     setError("");
 
     try {
-      const data =
-        await getGraphQLClient().request(
-          DeleteIssueDocument,
-          {
-            id: issueId,
-          },
-        );
+      const data = await getGraphQLClient().request(DeleteIssueDocument, {
+        id: issueId,
+      });
 
       if (!data.deleteIssue) {
         return;
       }
 
-      setIssues(
-        (current) =>
-          current.filter(
-            (issue) =>
-              issue.id !== issueId,
-          ),
-      );
+      setIssues((current) => current.filter((issue) => issue.id !== issueId));
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
-      );
+      setError(error instanceof Error ? error.message : "Unknown error");
     }
   };
 
-
   const logout = () => {
-    localStorage.removeItem(
-      "accessToken",
-    );
+    localStorage.removeItem("accessToken");
 
-    router.replace(
-      "/login",
-    );
+    router.replace("/login");
   };
-
 
   return (
     <main
@@ -4211,9 +3859,7 @@ const IssuesPage = () => {
       </header>
 
       <form
-        onSubmit={
-          handleCreate
-        }
+        onSubmit={handleCreate}
         className="
           space-y-3
           rounded-lg
@@ -4233,12 +3879,7 @@ const IssuesPage = () => {
 
         <input
           value={title}
-          onChange={
-            (event) =>
-              setTitle(
-                event.target.value,
-              )
-          }
+          onChange={(event) => setTitle(event.target.value)}
           placeholder="Title"
           className="
             w-full
@@ -4252,12 +3893,7 @@ const IssuesPage = () => {
 
         <textarea
           value={description}
-          onChange={
-            (event) =>
-              setDescription(
-                event.target.value,
-              )
-          }
+          onChange={(event) => setDescription(event.target.value)}
           placeholder="Description"
           className="
             min-h-24
@@ -4282,11 +3918,7 @@ const IssuesPage = () => {
             disabled:opacity-50
           "
         >
-          {
-            saving
-              ? "Creating..."
-              : "Create"
-          }
+          {saving ? "Creating..." : "Create"}
         </button>
       </form>
 
@@ -4305,9 +3937,7 @@ const IssuesPage = () => {
       )}
 
       {loading ? (
-        <p>
-          Loading...
-        </p>
+        <p>Loading...</p>
       ) : (
         <section
           className="
@@ -4324,113 +3954,98 @@ const IssuesPage = () => {
             </p>
           )}
 
-          {issues.map(
-            (issue) => (
-              <article
-                key={issue.id}
-                className="
+          {issues.map((issue) => (
+            <article
+              key={issue.id}
+              className="
                   rounded-lg
                   border
                   border-gray-200
                   p-4
                 "
-              >
-                <div
-                  className="
+            >
+              <div
+                className="
                     flex
                     items-start
                     justify-between
                     gap-4
                   "
-                >
-                  <div>
-                    <div
-                      className="
+              >
+                <div>
+                  <div
+                    className="
                         flex
                         items-center
                         gap-2
                       "
-                    >
-                      <h2
-                        className="
+                  >
+                    <h2
+                      className="
                           font-semibold
                         "
-                      >
-                        {issue.title}
-                      </h2>
+                    >
+                      {issue.title}
+                    </h2>
 
-                      <span
-                        className="
+                    <span
+                      className="
                           rounded
                           bg-gray-100
                           px-2
                           py-1
                           text-xs
                         "
-                      >
-                        {issue.status}
-                      </span>
-                    </div>
+                    >
+                      {issue.status}
+                    </span>
+                  </div>
 
-                    {issue.description && (
-                      <p
-                        className="
+                  {issue.description && (
+                    <p
+                      className="
                           mt-2
                           text-sm
                           text-gray-600
                         "
-                      >
-                        {
-                          issue.description
-                        }
-                      </p>
-                    )}
+                    >
+                      {issue.description}
+                    </p>
+                  )}
 
-                    <p
-                      className="
+                  <p
+                    className="
                         mt-2
                         text-xs
                         text-gray-400
                       "
-                    >
-                      Owner:
-                      {" "}
-                      {issue.owner.name}
-                    </p>
+                  >
+                    Owner: {issue.owner.name}
+                  </p>
 
-                    <p
-                      className="
+                  <p
+                    className="
                         mt-1
                         text-xs
                         text-gray-400
                       "
-                    >
-                      Created:
-                      {" "}
-                      {new Date(
-                        issue.createdAt,
-                      ).toLocaleString()}
-                    </p>
-                  </div>
+                  >
+                    Created: {new Date(issue.createdAt).toLocaleString()}
+                  </p>
+                </div>
 
-                  <div
-                    className="
+                <div
+                  className="
                       flex
                       shrink-0
                       gap-2
                     "
-                  >
-                    {issue.status !==
-                      "DONE" && (
-                      <button
-                        type="button"
-                        onClick={
-                          () =>
-                            void markDone(
-                              issue.id,
-                            )
-                        }
-                        className="
+                >
+                  {issue.status !== "DONE" && (
+                    <button
+                      type="button"
+                      onClick={() => void markDone(issue.id)}
+                      className="
                           rounded
                           border
                           border-gray-300
@@ -4438,20 +4053,15 @@ const IssuesPage = () => {
                           py-1
                           text-sm
                         "
-                      >
-                        Done
-                      </button>
-                    )}
+                    >
+                      Done
+                    </button>
+                  )}
 
-                    <button
-                      type="button"
-                      onClick={
-                        () =>
-                          void removeIssue(
-                            issue.id,
-                          )
-                      }
-                      className="
+                  <button
+                    type="button"
+                    onClick={() => void removeIssue(issue.id)}
+                    className="
                         rounded
                         bg-red-600
                         px-3
@@ -4459,14 +4069,13 @@ const IssuesPage = () => {
                         text-sm
                         text-white
                       "
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  >
+                    Delete
+                  </button>
                 </div>
-              </article>
-            ),
-          )}
+              </div>
+            </article>
+          ))}
         </section>
       )}
     </main>
@@ -4641,16 +4250,12 @@ npm install -D vitest jsdom @testing-library/react @testing-library/jest-dom
 `frontend/vitest.config.ts`:
 
 ```ts
-import {
-  defineConfig,
-} from "vitest/config";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
     environment: "jsdom",
-    setupFiles: [
-      "./vitest.setup.ts",
-    ],
+    setupFiles: ["./vitest.setup.ts"],
   },
 });
 ```
@@ -4666,39 +4271,21 @@ import "@testing-library/jest-dom/vitest";
 `frontend/src/app/page.test.tsx`:
 
 ```tsx
-import {
-  render,
-  screen,
-} from "@testing-library/react";
-import {
-  describe,
-  expect,
-  it,
-} from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import Home from "./page";
-
 
 describe("Home", () => {
   it("shows navigation links", () => {
     render(<Home />);
 
-    expect(
-      screen.getByRole(
-        "link",
-        { name: "Login" },
-      ),
-    ).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Login" })).toHaveAttribute(
       "href",
       "/login",
     );
 
-    expect(
-      screen.getByRole(
-        "link",
-        { name: "Register" },
-      ),
-    ).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute(
       "href",
       "/register",
     );
@@ -4726,9 +4313,7 @@ npx playwright install chromium
 `frontend/playwright.config.ts`:
 
 ```ts
-import {
-  defineConfig,
-} from "@playwright/test";
+import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   use: {
@@ -4740,25 +4325,14 @@ export default defineConfig({
 `frontend/e2e/navigation.spec.ts`:
 
 ```ts
-import {
-  expect,
-  test,
-} from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-
-test("register pageへ移動できる", async ({
-  page,
-}) => {
+test("register pageへ移動できる", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole(
-    "link",
-    { name: "Register" },
-  ).click();
+  await page.getByRole("link", { name: "Register" }).click();
 
-  await expect(page).toHaveURL(
-    /\/register$/,
-  );
+  await expect(page).toHaveURL(/\/register$/);
 });
 ```
 
@@ -4970,11 +4544,7 @@ async def issues(
 
 ```graphql
 query {
-  issues(
-    status: "OPEN"
-    search: "GraphQL"
-    first: 20
-  ) {
+  issues(status: "OPEN", search: "GraphQL", first: 20) {
     items {
       id
       title
@@ -4997,10 +4567,7 @@ query {
 
 ```graphql
 query {
-  issues(
-    after: "取得したcursor"
-    first: 20
-  ) {
+  issues(after: "取得したcursor", first: 20) {
     items {
       id
       title
@@ -5025,18 +4592,8 @@ query {
 9段階で使用している`description` / `createdAt` / `owner`を落とさず、IssueのField setを維持する。
 
 ```graphql
-query GetIssues(
-  $status: String
-  $search: String
-  $after: String
-  $first: Int
-) {
-  issues(
-    status: $status
-    search: $search
-    after: $after
-    first: $first
-  ) {
+query GetIssues($status: String, $search: String, $after: String, $first: Int) {
+  issues(status: $status, search: $search, after: $after, first: $first) {
     items {
       id
       title
@@ -5070,138 +4627,80 @@ npm run codegen
 `GetIssues`のResponse shapeが`Issue[]`から`IssueConnection`へ変わったため、まずIssue型を変更する。
 
 ```tsx
-type Issue =
-  GetIssuesQuery["issues"]["items"][number];
+type Issue = GetIssuesQuery["issues"]["items"][number];
 ```
 
 既存stateへFilter / Search / Cursorを追加する。
 
 ```tsx
-const [
-  status,
-  setStatus,
-] = useState("");
+const [status, setStatus] = useState("");
 
-const [
-  search,
-  setSearch,
-] = useState("");
+const [search, setSearch] = useState("");
 
-const [
-  debouncedSearch,
-  setDebouncedSearch,
-] = useState("");
+const [debouncedSearch, setDebouncedSearch] = useState("");
 
-const [
-  nextCursor,
-  setNextCursor,
-] = useState<string | null>(null);
+const [nextCursor, setNextCursor] = useState<string | null>(null);
 ```
 
 Searchは入力ごとにRequestせず、300ms待ってからQueryへ反映する。
 
 ```tsx
-useEffect(
-  () => {
-    const timer = window.setTimeout(
-      () => {
-        setDebouncedSearch(search);
-      },
-      300,
-    );
+useEffect(() => {
+  const timer = window.setTimeout(() => {
+    setDebouncedSearch(search);
+  }, 300);
 
-    return () => {
-      window.clearTimeout(timer);
-    };
-  },
-  [search],
-);
+  return () => {
+    window.clearTimeout(timer);
+  };
+}, [search]);
 ```
 
 9段階の`loadIssues`を以下へ置き換える。
 
 ```tsx
-const loadIssues =
-  useCallback(
-    async (
-      after: string | null = null,
-      append = false,
-    ) => {
-      try {
-        const data =
-          await getGraphQLClient().request(
-            GetIssuesDocument,
-            {
-              status: status || null,
-              search:
-                debouncedSearch || null,
-              after,
-              first: 20,
-            },
-          );
+const loadIssues = useCallback(
+  async (after: string | null = null, append = false) => {
+    try {
+      const data = await getGraphQLClient().request(GetIssuesDocument, {
+        status: status || null,
+        search: debouncedSearch || null,
+        after,
+        first: 20,
+      });
 
-        setIssues(
-          (current) =>
-            append
-              ? [
-                  ...current,
-                  ...data.issues.items,
-                ]
-              : data.issues.items,
-        );
+      setIssues((current) =>
+        append ? [...current, ...data.issues.items] : data.issues.items,
+      );
 
-        setNextCursor(
-          data.issues.nextCursor
-          ?? null,
-        );
+      setNextCursor(data.issues.nextCursor ?? null);
 
-        setError("");
-      } catch (error) {
-        setError(
-          error instanceof Error
-            ? error.message
-            : "Unknown error",
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      status,
-      debouncedSearch,
-    ],
-  );
+      setError("");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  },
+  [status, debouncedSearch],
+);
 ```
 
 初回表示とFilter / Search変更時は先頭Pageから取得する。
 既存のtoken checkを残したまま、Effectを次の形にする。
 
 ```tsx
-useEffect(
-  () => {
-    const token =
-      localStorage.getItem(
-        "accessToken",
-      );
+useEffect(() => {
+  const token = localStorage.getItem("accessToken");
 
-    if (!token) {
-      router.replace(
-        "/login",
-      );
+  if (!token) {
+    router.replace("/login");
 
-      return;
-    }
+    return;
+  }
 
-    void loadIssues(
-      null,
-      false,
-    );
-  },
-  [
-    loadIssues,
-    router,
-  ],
-);
+  void loadIssues(null, false);
+}, [loadIssues, router]);
 ```
 
 Load More handlerを追加する。
@@ -5212,10 +4711,7 @@ const handleLoadMore = async () => {
     return;
   }
 
-  await loadIssues(
-    nextCursor,
-    true,
-  );
+  await loadIssues(nextCursor, true);
 };
 ```
 
@@ -5225,9 +4721,7 @@ Issue Listの前にFilter / Search UIを追加する。
 <div className="flex gap-3">
   <select
     value={status}
-    onChange={(event) =>
-      setStatus(event.target.value)
-    }
+    onChange={(event) => setStatus(event.target.value)}
     className="rounded border border-gray-300 px-3 py-2"
   >
     <option value="">All</option>
@@ -5237,9 +4731,7 @@ Issue Listの前にFilter / Search UIを追加する。
 
   <input
     value={search}
-    onChange={(event) =>
-      setSearch(event.target.value)
-    }
+    onChange={(event) => setSearch(event.target.value)}
     placeholder="Search title"
     className="flex-1 rounded border border-gray-300 px-3 py-2"
   />
@@ -5249,17 +4741,17 @@ Issue Listの前にFilter / Search UIを追加する。
 Issue Listの下にLoad Moreを追加する。
 
 ```tsx
-{nextCursor && (
-  <button
-    type="button"
-    onClick={() =>
-      void handleLoadMore()
-    }
-    className="rounded border border-gray-300 px-4 py-2"
-  >
-    Load More
-  </button>
-)}
+{
+  nextCursor && (
+    <button
+      type="button"
+      onClick={() => void handleLoadMore()}
+      className="rounded border border-gray-300 px-4 py-2"
+    >
+      Load More
+    </button>
+  );
+}
 ```
 
 この段階ではCreate / Update後に現在のFilter条件と表示内容がずれないよう、成功後に先頭Pageを再取得してもよい。
@@ -5402,11 +4894,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U app -d app",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -5928,7 +5416,6 @@ session.add()のみawaitなし
 ```
 
 このルールから外れたcodeが出たら、まずエラーを疑う。
-
 
 # Phase 1 完了基準
 
